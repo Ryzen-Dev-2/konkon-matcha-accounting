@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/audit";
 import { getDb } from "@/lib/db";
 import { serialise } from "@/lib/format";
 import { storeOrderAttachment } from "@/lib/order-attachments";
+import { deliverOrderEmail } from "@/lib/order-email";
 import { ManagedStorageQuotaError } from "@/lib/storage-control";
 
 export const runtime = "nodejs";
@@ -46,9 +47,23 @@ export async function POST(request: Request) {
         storedSize: result.attachment.storedSize,
       },
     );
+    let notification = { sent: false };
+    try {
+      notification = await deliverOrderEmail(
+        db,
+        result.updated,
+        request,
+        `New file on ${String(order.orderNo)}`,
+        `${auth.session.fullName} added ${result.attachment.originalName} to your private order conversation.`,
+        "MESSAGE",
+      );
+    } catch {
+      // The attachment is already protected and must not be rolled back by mail.
+    }
     return ok(serialise({
       attachment: result.attachment,
       order: result.updated,
+      notification,
     }));
   } catch (error) {
     if (error instanceof ManagedStorageQuotaError)

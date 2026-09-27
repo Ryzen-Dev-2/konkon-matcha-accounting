@@ -12,6 +12,7 @@ import {
   validOrderAccess,
   orderAccessHash,
 } from "../lib/online-orders";
+import { resolvePublicOrigin } from "../lib/public-origin";
 
 test("storefront product pages accept only canonical product identifiers", () => {
   assert.equal(storefrontProductIdSchema.safeParse(new ObjectId().toHexString()).success, true);
@@ -126,4 +127,29 @@ test("saved commerce settings survive MongoDB metadata fields", () => {
   assert.equal(settings.enabled, false);
   assert.equal(settings.storeTitle, "Wholesale request desk");
   assert.equal(settings.abandonedRetentionDays, 60);
+  assert.equal(settings.completedRetentionEnabled, true);
+  assert.equal(settings.completedRetentionDays, 90);
+  assert.equal(settings.retentionReminderDays, 7);
+});
+
+test("commerce retention and public-domain settings are validated together", () => {
+  const common = {
+    enabled: true,
+    storeTitle: "Online order desk",
+    storeSubtitle: "Choose products and send an order request.",
+    termsNotice: "Submitting this request does not reserve stock or create a charge.",
+    sensitiveFields: [],
+    abandonedRetentionDays: 90,
+    completedRetentionEnabled: true,
+    completedRetentionDays: 30,
+  };
+  assert.equal(commerceSettingsSchema.safeParse({ ...common, publicSiteUrl: "https://shop.example.com", retentionReminderDays: 7 }).success, true);
+  assert.equal(commerceSettingsSchema.safeParse({ ...common, publicSiteUrl: "http://shop.example.com", retentionReminderDays: 7 }).success, false);
+  assert.equal(commerceSettingsSchema.safeParse({ ...common, publicSiteUrl: "https://shop.example.com", retentionReminderDays: 30 }).success, false);
+});
+
+test("public links prefer the owner domain and otherwise follow the active deployment", () => {
+  assert.equal(resolvePublicOrigin("https://preview.example.dev/api/storefront", "https://orders.example.com/path"), "https://orders.example.com");
+  assert.equal(resolvePublicOrigin("https://new-deployment.example.dev/api/storefront"), "https://new-deployment.example.dev");
+  assert.equal(resolvePublicOrigin("not a URL"), "");
 });

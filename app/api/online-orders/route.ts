@@ -12,12 +12,9 @@ import { getAttachmentStorageConfig } from "@/lib/attachment-storage";
 import { normaliseBusinessSettings } from "@/lib/business-settings";
 import { getDb } from "@/lib/db";
 import { serialise } from "@/lib/format";
-import {
-  readGoogleSmtp,
-  safeGoogleSmtp,
-  sendGoogleSmtp,
-} from "@/lib/google-smtp";
-import { decryptMemberToken, encryptMemberToken } from "@/lib/member-cards";
+import { readGoogleSmtp, safeGoogleSmtp } from "@/lib/google-smtp";
+import { encryptMemberToken } from "@/lib/member-cards";
+import { deliverOrderEmail } from "@/lib/order-email";
 import {
   calculateOnlineOffer,
   catalogueProductSchema,
@@ -26,7 +23,9 @@ import {
   onlineOrderAdminSchema,
   orderAccessHash,
   orderMessage,
+  onlineOrderTokenContext,
 } from "@/lib/online-orders";
+import { resolvePublicOrigin } from "@/lib/public-origin";
 import { hasPermission } from "@/lib/rbac";
 import {
   findShippingProvider,
@@ -41,10 +40,6 @@ const catalogueMutation = catalogueProductSchema
   .extend({ action: z.literal("UPDATE_CATALOGUE") })
   .strict();
 
-function tokenContext(id: string) {
-  return `online-order:${id}:access-token:v1`;
-}
-
 function safeOrder(order: Record<string, any>) {
   const {
     publicTokenHash: _publicTokenHash,
@@ -52,76 +47,6 @@ function safeOrder(order: Record<string, any>) {
     ...safe
   } = order;
   return safe;
-}
-
-function escapeHtml(value: unknown) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function orderAccessUrl(order: Record<string, any>, request: Request) {
-  if (!order.encryptedPublicToken) return "";
-  const token = decryptMemberToken(
-    String(order.encryptedPublicToken),
-    tokenContext(String(order._id)),
-  );
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  let origin = new URL(request.url).origin;
-  if (configured) {
-    try {
-      origin = new URL(configured).origin;
-    } catch {
-      // A malformed optional public URL must not break an accepted order.
-    }
-  }
-  return `${origin}/order/${encodeURIComponent(token)}`;
-}
-
-async function deliverOrderEmail(
-  db: Awaited<ReturnType<typeof getDb>>,
-  order: Record<string, any>,
-  request: Request,
-  subject: string,
-  message: string,
-) {
-  const smtp = await readGoogleSmtp(db);
-  if (!smtp)
-    return {
-      sent: false,
-      error: "Owner has not connected Google SMTP.",
-      accessUrl: orderAccessUrl(order, request),
-    };
-  const accessUrl = orderAccessUrl(order, request);
-  try {
-    await sendGoogleSmtp(smtp, {
-      to: String(order.customer.email),
-      subject,
-      text: `${message}\n\nOpen your private order chat:\n${accessUrl}\n\nOrder: ${order.orderNo}`,
-      html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#14213d"><p style="font-size:12px;letter-spacing:.12em;color:#4f6bed">${escapeHtml(order.orderNo)}</p><h1 style="font-size:28px">${escapeHtml(subject)}</h1><p style="line-height:1.7">${escapeHtml(message)}</p><p><a href="${escapeHtml(accessUrl)}" style="display:inline-block;padding:13px 18px;background:#2457f5;color:white;text-decoration:none;border-radius:8px">Open private order chat</a></p><p style="font-size:12px;color:#687089">This secure link belongs to this order. Do not forward it.</p></div>`,
-    });
-    await db.collection("onlineOrders").updateOne(
-      { _id: order._id },
-      {
-        $set: { lastEmailSentAt: new Date() },
-        $unset: { lastEmailError: "" },
-      },
-    );
-    return { sent: true, error: "", accessUrl };
-  } catch (error) {
-    const safeError =
-      error instanceof Error
-        ? error.message
-        : "Google SMTP could not send the message.";
-    await db.collection("onlineOrders").updateOne(
-      { _id: order._id },
-      { $set: { lastEmailError: safeError, updatedAt: new Date() } },
-    );
-    return { sent: false, error: safeError, accessUrl };
-  }
 }
 
 export async function GET(request: Request) {
@@ -307,7 +232,15 @@ export async function PATCH(request: Request) {
         input.id,
         { orderNo: order.orderNo },
       );
-      return ok(serialise(safeOrder(updated)));
+      const delivery = await deliverOrderEmail(
+        db,
+        updated,
+        request,
+        `New reply on ${String(updated.orderNo)}`,
+        `${auth.session.fullName} replied to your private order conversation: “${input.text}”`,
+        "MESSAGE",
+      );
+      return ok({ order: serialise(safeOrder(updated)), notification: delivery });
     }
 
     if (input.action === "RESEND_EMAIL") {
@@ -319,6 +252,7 @@ export async function PATCH(request: Request) {
         request,
         `Update for ${String(order.orderNo)}`,
         "Your order workspace has an update. Open the private link to review the latest messages and documents.",
+        "UPDATE",
       );
       await writeAudit(
         db,
@@ -351,7 +285,7 @@ export async function PATCH(request: Request) {
             publicTokenHash: orderAccessHash(token),
             encryptedPublicToken: encryptMemberToken(
               token,
-              tokenContext(input.id),
+              onlineOrderTokenContext(input.id),
             ),
             acceptedBy: new ObjectId(auth.session.id),
             acceptedByName: auth.session.fullName,
@@ -371,6 +305,7 @@ export async function PATCH(request: Request) {
         request,
         `Your order request ${String(updated.orderNo)} was accepted`,
         "Your request has been accepted. Continue in the private order chat before making any payment.",
+        "ACCEPTED",
       );
       await writeAudit(
         db,
@@ -418,7 +353,18 @@ export async function PATCH(request: Request) {
         input.id,
         { orderNo: order.orderNo, reason: input.reason },
       );
-      return ok(serialise(safeOrder(updated)));
+      const delivery = await deliverOrderEmail(
+        db,
+        updated,
+        request,
+        `Update for order request ${updated.orderNo}`,
+        `We are unable to continue this order request. Reason: ${input.reason}. No payment was taken. You may visit the online shop to submit a new request if your requirements change.`,
+        "REJECTED",
+      );
+      return ok({
+        order: serialise(safeOrder(updated)),
+        notification: delivery,
+      });
     }
 
     if (!order.encryptedPublicToken)
@@ -483,7 +429,15 @@ export async function PATCH(request: Request) {
         input.id,
         { orderNo: order.orderNo, total: offer.total, discount: offer.discount },
       );
-      return ok(serialise(safeOrder(updated)));
+      const delivery = await deliverOrderEmail(
+        db,
+        updated,
+        request,
+        `Your offer for ${String(updated.orderNo)} is ready`,
+        `We prepared a reviewed offer for ${business.currency} ${offer.total.toFixed(2)}. Open the private order chat to review the items, discount and notes before payment.`,
+        "OFFER",
+      );
+      return ok({ order: serialise(safeOrder(updated)), notification: delivery });
     }
 
     if (input.action === "REQUEST_PAYMENT") {
@@ -526,6 +480,7 @@ export async function PATCH(request: Request) {
         request,
         `Payment request for ${String(updated.orderNo)}`,
         `A payment request for ${String(updated.currency)} ${Number(updated.total).toFixed(2)} is available in your private order chat.`,
+        "PAYMENT",
       );
       await writeAudit(
         db,
@@ -591,6 +546,7 @@ export async function PATCH(request: Request) {
         request,
         `Invoice for ${String(updated.orderNo)}`,
         `Invoice ${String(invoice.invoiceNo)} is now available in your private order chat.`,
+        "INVOICE",
       );
       return ok({
         order: serialise(safeOrder(updated)),
@@ -606,12 +562,18 @@ export async function PATCH(request: Request) {
       if (!sale) return fail("Choose a completed receipt.", 404);
       if (Math.abs(Number(sale.total) - Number(order.total)) > 0.000001)
         return fail("The receipt total must match the accepted order total.", 409);
+      const commerce = normaliseCommerceSettings(
+        await db.collection("settings").findOne({ key: "commerce" }),
+      );
       const linkedReceipt = {
         id: sale._id,
         receiptNo: sale.receiptNo,
         total: sale.total,
         createdAt: sale.createdAt,
-        publicUrl: receiptAccessUrl(sale, request.url),
+        publicUrl: receiptAccessUrl(
+          sale,
+          resolvePublicOrigin(request, commerce.publicSiteUrl) || request.url,
+        ),
       };
       const updated = await db.collection("onlineOrders").findOneAndUpdate(
         { _id: id, version: input.expectedVersion },
@@ -642,6 +604,7 @@ export async function PATCH(request: Request) {
         request,
         `Receipt for ${String(updated.orderNo)}`,
         `Receipt ${String(sale.receiptNo)} is now available with your order and payment is recorded as confirmed.`,
+        "RECEIPT",
       );
       await writeAudit(
         db,
@@ -685,7 +648,12 @@ export async function PATCH(request: Request) {
       const updated = await db.collection("onlineOrders").findOneAndUpdate(
         { _id: id, version: input.expectedVersion },
         {
-          $set: { status, shipping, updatedAt: now },
+          $set: {
+            status,
+            shipping,
+            updatedAt: now,
+            ...(input.status === "DELIVERED" ? { completedAt: now } : {}),
+          },
           $push: {
             messages: orderMessage(
               "SYSTEM",
@@ -705,6 +673,7 @@ export async function PATCH(request: Request) {
         request,
         `Shipment update for ${String(updated.orderNo)}`,
         `${carrier.carrier} shipment status: ${input.status.replaceAll("_", " ")}${input.trackingReference ? `. Tracking reference: ${input.trackingReference}` : ""}.`,
+        "SHIPPING",
       );
       await writeAudit(
         db,

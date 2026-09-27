@@ -9,14 +9,13 @@ import {
   publicOrderMessageSchema,
   validOrderAccess,
 } from "@/lib/online-orders";
+import { resolvePublicOrigin } from "@/lib/public-origin";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 function commerceWorkspaceUrl(request: Request) {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  try { return `${new URL(configured || request.url).origin}/commerce`; }
-  catch { return `${new URL(request.url).origin}/commerce`; }
+  return `${resolvePublicOrigin(request)}/commerce`;
 }
 
 async function findOrder(tokenValue: string) {

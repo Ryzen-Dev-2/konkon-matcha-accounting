@@ -1,8 +1,9 @@
-import { type Db } from "mongodb";
+import { type Db, type ObjectId } from "mongodb";
 import { EXPIRING_AUDIT_ACTIONS, auditExpiry } from "./data-retention";
 import { clearArchivedMember, clearArchivedUser } from "./record-deletion";
 import { packDocument, unpackDocument } from "./document-storage";
 import { normaliseCommerceSettings, orderMessage } from "./online-orders";
+import { deliverOrderEmail } from "./order-email";
 
 // Only temporary records are eligible for physical deletion. No ledger,
 // sale/refund/payment evidence, stock movement or settings history is listed.
@@ -14,9 +15,46 @@ const expiringCollections = {
   notificationWebhookEvents: "expiresAt",
 } as const;
 
+async function clearOnlineOrderPersonalData(db: Db, order: { _id: ObjectId }, now: Date, label: string) {
+  const redacted = await db.collection("onlineOrders").updateOne(
+    { _id: order._id, personalDataClearedAt: { $exists: false } },
+    {
+      $set: {
+        customer: { name: label, email: "", phone: "", address: "" },
+        note: "",
+        sensitiveAnswers: [],
+        steps: [],
+        messages: [orderMessage("SYSTEM", "Customer contact details, attachments and conversation were cleared under the online-order retention policy.")],
+        messageCount: 1,
+        attachmentCount: 0,
+        personalDataClearedAt: now,
+        updatedAt: now,
+      },
+      $unset: {
+        publicTokenHash: "",
+        encryptedPublicToken: "",
+        lastEmailError: "",
+        rejectionReason: "",
+        offerNote: "",
+        paymentRequest: "",
+        "shipping.note": "",
+        "shipping.trackingReference": "",
+      },
+    },
+    { maxTimeMS: 2500 },
+  );
+  if (!redacted.modifiedCount) return false;
+  await db.collection("onlineOrderAttachments").updateMany(
+    { orderId: order._id, status: "ACTIVE" },
+    { $set: { status: "ORPHANED", expiresAt: now } },
+    { maxTimeMS: 2500 },
+  );
+  return true;
+}
+
 export async function maintainData(db: Db, dryRun = true, now = new Date()) {
   const deadline = Date.now() + 20_000;
-  const summary = { dryRun, expiredRecords: 0, clearedProfiles: 0, clearedOnlineOrders: 0, expiringLogs: 0, packedDocuments: 0, savedBytes: 0, invalidDocuments: 0, budgetReached: false };
+  const summary = { dryRun, expiredRecords: 0, clearedProfiles: 0, remindedOnlineOrders: 0, clearedOnlineOrders: 0, expiringLogs: 0, packedDocuments: 0, savedBytes: 0, invalidDocuments: 0, budgetReached: false };
   for (const [name, field] of Object.entries(expiringCollections)) {
     if (Date.now() >= deadline) { summary.budgetReached = true; return summary; }
     const days = name === "memberCards" ? 90 : name === "paymentWebhookEvents" ? 30 : 0;
@@ -58,46 +96,61 @@ export async function maintainData(db: Db, dryRun = true, now = new Date()) {
         summary.budgetReached = true;
         return summary;
       }
-      if (!dryRun) {
-        const redacted = await db.collection("onlineOrders").updateOne(
-          { _id: order._id, personalDataClearedAt: { $exists: false } },
-          {
-            $set: {
-              customer: {
-                name: "Expired customer request",
-                email: "",
-                phone: "",
-                address: "",
-              },
-              note: "",
-              sensitiveAnswers: [],
-              messages: [
-                orderMessage(
-                  "SYSTEM",
-                  "Customer contact details and conversation were cleared under the online-order retention policy.",
-                ),
-              ],
-              messageCount: 1,
-              attachmentCount: 0,
-              personalDataClearedAt: now,
-              updatedAt: now,
-            },
-            $unset: {
-              publicTokenHash: "",
-              encryptedPublicToken: "",
-              lastEmailError: "",
-            },
-          },
-          { maxTimeMS: 2500 },
-        );
-        if (!redacted.modifiedCount) continue;
-        await db.collection("onlineOrderAttachments").updateMany(
-          { orderId: order._id, status: "ACTIVE" },
-          { $set: { status: "ORPHANED", expiresAt: now } },
-          { maxTimeMS: 2500 },
-        );
-      }
+      if (!dryRun && !await clearOnlineOrderPersonalData(db, order, now, "Expired customer request")) continue;
       summary.clearedOnlineOrders++;
+    }
+    if (commerce.completedRetentionEnabled && Date.now() < deadline) {
+      const reminderCutoff = new Date(now.getTime() - (commerce.completedRetentionDays - commerce.retentionReminderDays) * 86_400_000);
+      const reminders = await db.collection("onlineOrders").find({
+        status: "COMPLETED",
+        personalDataClearedAt: { $exists: false },
+        retentionReminderSentAt: { $exists: false },
+        $or: [
+          { completedAt: { $type: "date", $lte: reminderCutoff } },
+          { completedAt: { $exists: false }, updatedAt: { $type: "date", $lte: reminderCutoff } },
+        ],
+      }, { maxTimeMS: 2500 }).sort({ completedAt: 1, updatedAt: 1 }).limit(3).toArray();
+      if (dryRun) {
+        summary.remindedOnlineOrders += reminders.length;
+      } else {
+        const reminded = await Promise.all(reminders.map(async (order) => {
+          try {
+            const anchor = order.completedAt instanceof Date ? order.completedAt : order.updatedAt instanceof Date ? order.updatedAt : now;
+            const policyDate = anchor.getTime() + commerce.completedRetentionDays * 86_400_000;
+            const cleanupAt = new Date(Math.max(policyDate, now.getTime() + commerce.retentionReminderDays * 86_400_000));
+            const delivery = await deliverOrderEmail(
+              db,
+              order,
+              undefined,
+              `Your completed order workspace closes on ${cleanupAt.toISOString().slice(0, 10)}`,
+              `Your delivery is complete. On ${cleanupAt.toISOString().slice(0, 10)}, we will remove the private chat, contact details and uploaded chat files to protect your privacy and control storage. Required accounting documents and audit evidence will remain protected.`,
+              "RETENTION",
+            );
+            if (!delivery.sent) return false;
+            const updated = await db.collection("onlineOrders").updateOne(
+              { _id: order._id, retentionReminderSentAt: { $exists: false } },
+              { $set: { retentionReminderSentAt: now, scheduledCleanupAt: cleanupAt } },
+              { maxTimeMS: 2500 },
+            );
+            return updated.modifiedCount > 0;
+          } catch {
+            return false;
+          }
+        }));
+        summary.remindedOnlineOrders += reminded.filter(Boolean).length;
+      }
+      if (Date.now() >= deadline) { summary.budgetReached = true; return summary; }
+      const completed = await db.collection("onlineOrders").find({
+        status: "COMPLETED",
+        scheduledCleanupAt: { $type: "date", $lte: now },
+        retentionReminderSentAt: { $type: "date" },
+        personalDataClearedAt: { $exists: false },
+      }, { projection: { _id: 1 }, maxTimeMS: 2500 }).limit(25).toArray();
+      for (const order of completed) {
+        if (Date.now() >= deadline) { summary.budgetReached = true; return summary; }
+        if (!dryRun && !await clearOnlineOrderPersonalData(db, order, now, "Completed online order")) continue;
+        summary.clearedOnlineOrders++;
+      }
     }
   }
   const logs = await db.collection("auditLogs").find({ action: { $in: EXPIRING_AUDIT_ACTIONS }, expiresAt: { $exists: false }, createdAt: { $type: "date" } }, { projection: { action: 1, createdAt: 1 }, maxTimeMS: 2500 }).limit(100).toArray();

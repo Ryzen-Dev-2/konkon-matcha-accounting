@@ -5,6 +5,7 @@ import { normaliseBusinessSettings } from "@/lib/business-settings";
 import { getDb } from "@/lib/db";
 import { makeDocumentNo } from "@/lib/format";
 import { broadcastNotification } from "@/lib/notification-connectors";
+import { deliverOrderEmail } from "@/lib/order-email";
 import {
   normaliseCommerceSettings,
   onlineOrderRequestSchema,
@@ -12,14 +13,13 @@ import {
   storefrontProductIdSchema,
 } from "@/lib/online-orders";
 import { roundCurrency } from "@/lib/international";
+import { resolvePublicOrigin } from "@/lib/public-origin";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-function commerceWorkspaceUrl(request: Request) {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  try { return `${new URL(configured || request.url).origin}/commerce`; }
-  catch { return `${new URL(request.url).origin}/commerce`; }
+function commerceWorkspaceUrl(request: Request, publicSiteUrl = "") {
+  return `${resolvePublicOrigin(request, publicSiteUrl)}/commerce`;
 }
 
 function throttleKey(request: Request, email: string, now: Date) {
@@ -196,7 +196,7 @@ export async function POST(request: Request) {
         ? [orderMessage("CUSTOMER", parsed.data.note)]
         : []),
     ];
-    await db.collection("onlineOrders").insertOne({
+    const order = {
       _id: id,
       orderNo,
       status: "REQUESTED",
@@ -220,16 +220,33 @@ export async function POST(request: Request) {
       attachmentCount: 0,
       createdAt: now,
       updatedAt: now,
-    });
-    await broadcastNotification(
-      db,
-      `New online order ${orderNo} from ${parsed.data.customerName}. ${items.length} product line(s), ${business.currency} ${subtotal.toFixed(2)}. Open ${commerceWorkspaceUrl(request)}. Telegram operators can reply with /reply ${orderNo} your message`,
-    );
+    };
+    await db.collection("onlineOrders").insertOne(order);
+    const notificationResults = await Promise.allSettled([
+      broadcastNotification(
+        db,
+        `New online order ${orderNo} from ${parsed.data.customerName}. ${items.length} product line(s), ${business.currency} ${subtotal.toFixed(2)}. Open ${commerceWorkspaceUrl(request, store.publicSiteUrl)}. Telegram operators can reply with /reply ${orderNo} your message`,
+      ),
+      deliverOrderEmail(
+        db,
+        order,
+        request,
+        `We received your order request ${orderNo}`,
+        "Thank you — your request is safely in our review queue. No stock is reserved and no payment is due yet. Our team will email your private order link after accepting the request.",
+        "RECEIVED",
+      ),
+    ]);
+    const email = notificationResults[1]?.status === "fulfilled"
+      ? notificationResults[1].value
+      : { sent: false };
     return created({
       orderNo,
       status: "REQUESTED",
+      emailSent: email.sent,
       message:
-        "Your request was sent. Staff will review it before emailing a private order-chat link.",
+        email.sent
+          ? "Your request was sent and a confirmation email is on the way. Staff will review it before inviting you to the private chat."
+          : "Your request was sent. Staff will review it before emailing a private order-chat link.",
     });
   } catch (error) {
     if (error instanceof SyntaxError)

@@ -15,7 +15,7 @@ This document prevents planned AutoCount-style modules from being confused with 
 - Product-level batch/lot/expiry activation, supplier-lot receipt provenance, FEFO sales, exact refund/transfer lot restoration, expiry quarantine and optimistic batch counts
 - Thirty-day location demand forecasting for FEFO lots, at-risk freshness queues, advisory transfer suggestions, and controlled expiry/damage/recall disposal with inventory write-off journals
 - POS, tenders, trusted coupons/manual discounts, tax calculation and transactional posting
-- Public online catalogue and order-request intake with address/contact validation, rate limiting, controlled-goods questions, review/accept/reject, counter-style quantity and discount offers, purpose-hashed private customer links, bounded two-way chat, Google SMTP notifications, encrypted private-GitHub image/PDF sharing, invoice/verified-receipt linking, custom fulfilment steps and manual/API-reference shipment tracking
+- Public online catalogue and order-request intake with address/contact validation, rate limiting, controlled-goods questions, review/accept/reject, counter-style quantity and discount offers, purpose-hashed private customer links, branded bounded two-way chat, workspace-branded responsive acknowledgement/reply/offer/payment/document/shipping Google SMTP notifications, deployment-aware public links, encrypted private-GitHub image/PDF sharing, invoice/verified-receipt linking, custom fulfilment steps and manual/API-reference shipment tracking
 - Owner-selectable workspace logo plus Matcha, Professional and Focus workspace themes, and a KONA-led cinematic parallax public index
 - Live invoice and receipt component editor with drag/reorder controls, built-in financial blocks, safe uploaded image/text components and portable JSON component import; arbitrary HTML and JavaScript are not accepted
 - Custom invoice and receipt templates, print/reprint, refund and historical snapshots
@@ -66,7 +66,7 @@ This document prevents planned AutoCount-style modules from being confused with 
 - Smart Replenishment recommendations using stock thresholds, 30-day demand, supplier lead time and open inbound quantities
 - Supply Pulse supplier-performance scoring using delivery punctuality and overdue commitments
 - Searchable and printable in-app bilingual learning centre plus complete standalone Chinese and English user manuals
-- Retention-based personal-data clearing for abandoned/rejected/cancelled online requests, plus expiry of request throttles and orphaned attachment metadata in the bounded daily maintenance job
+- Retention-based personal-data clearing for abandoned/rejected/cancelled online requests plus optional warned completed-order cleanup, request-throttle expiry and orphaned attachment handling in the bounded daily maintenance job
 
 ## AutoCount comparison baseline (reviewed 22 August 2026)
 

@@ -20,6 +20,7 @@ export const DEFAULT_COMMERCE_SETTINGS = {
     "Choose products and send a request. Stock and price are confirmed before payment.",
   termsNotice:
     "Submitting a request does not reserve stock or create a charge. We will confirm availability and the final amount in your private order chat.",
+  publicSiteUrl: "",
   sensitiveFields: [
     {
       key: "intended-use",
@@ -28,6 +29,9 @@ export const DEFAULT_COMMERCE_SETTINGS = {
     },
   ],
   abandonedRetentionDays: 90,
+  completedRetentionEnabled: true,
+  completedRetentionDays: 90,
+  retentionReminderDays: 7,
 } as const;
 
 export const commerceSettingsSchema = z
@@ -36,6 +40,12 @@ export const commerceSettingsSchema = z
     storeTitle: z.string().trim().min(2).max(80),
     storeSubtitle: z.string().trim().min(10).max(300),
     termsNotice: z.string().trim().min(10).max(600),
+    publicSiteUrl: z
+      .union([
+        z.string().trim().url().max(300).refine((value) => value.startsWith("https://"), "The public site URL must use HTTPS."),
+        z.literal(""),
+      ])
+      .default(""),
     sensitiveFields: z
       .array(
         z
@@ -55,6 +65,9 @@ export const commerceSettingsSchema = z
       .max(10)
       .default([]),
     abandonedRetentionDays: z.coerce.number().int().min(30).max(365),
+    completedRetentionEnabled: z.boolean().default(true),
+    completedRetentionDays: z.coerce.number().int().min(30).max(365).default(90),
+    retentionReminderDays: z.coerce.number().int().min(1).max(30).default(7),
   })
   .strict()
   .superRefine((value, context) => {
@@ -65,6 +78,12 @@ export const commerceSettingsSchema = z
         path: ["sensitiveFields"],
         message: "Sensitive-order questions need unique keys.",
       });
+    if (value.retentionReminderDays >= value.completedRetentionDays)
+      context.addIssue({
+        code: "custom",
+        path: ["retentionReminderDays"],
+        message: "The reminder must be earlier than completed-order cleanup.",
+      });
   });
 
 export function normaliseCommerceSettings(value?: Record<string, unknown> | null) {
@@ -74,11 +93,18 @@ export function normaliseCommerceSettings(value?: Record<string, unknown> | null
     storeSubtitle:
       value?.storeSubtitle ?? DEFAULT_COMMERCE_SETTINGS.storeSubtitle,
     termsNotice: value?.termsNotice ?? DEFAULT_COMMERCE_SETTINGS.termsNotice,
+    publicSiteUrl: value?.publicSiteUrl ?? DEFAULT_COMMERCE_SETTINGS.publicSiteUrl,
     sensitiveFields:
       value?.sensitiveFields ?? DEFAULT_COMMERCE_SETTINGS.sensitiveFields,
     abandonedRetentionDays:
       value?.abandonedRetentionDays ??
       DEFAULT_COMMERCE_SETTINGS.abandonedRetentionDays,
+    completedRetentionEnabled:
+      value?.completedRetentionEnabled ?? DEFAULT_COMMERCE_SETTINGS.completedRetentionEnabled,
+    completedRetentionDays:
+      value?.completedRetentionDays ?? DEFAULT_COMMERCE_SETTINGS.completedRetentionDays,
+    retentionReminderDays:
+      value?.retentionReminderDays ?? DEFAULT_COMMERCE_SETTINGS.retentionReminderDays,
   });
   return parsed.success ? parsed.data : { ...DEFAULT_COMMERCE_SETTINGS };
 }
@@ -262,6 +288,10 @@ export const catalogueProductSchema = z
 
 export function createOrderAccessToken(id: ObjectId | string) {
   return `KKO1-${String(id)}-${randomBytes(24).toString("base64url")}`;
+}
+
+export function onlineOrderTokenContext(id: ObjectId | string) {
+  return `online-order:${String(id)}:access-token:v1`;
 }
 
 export function parseOrderAccessToken(value: unknown) {

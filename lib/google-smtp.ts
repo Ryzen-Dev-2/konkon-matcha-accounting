@@ -4,9 +4,21 @@ import { connect, type TLSSocket } from "node:tls";
 import type { Db } from "mongodb";
 import { z } from "zod";
 import { decryptMemberToken, encryptMemberToken } from "@/lib/member-cards";
+import {
+  buildGoogleSmtpMessage,
+  type InlineEmailImage,
+} from "@/lib/smtp-message";
+
+export { buildGoogleSmtpMessage } from "@/lib/smtp-message";
 
 const CONFIG_ID = "google-smtp-v1";
 const PASSWORD_CONTEXT = "commerce:google-smtp:app-password:v1";
+
+function googleMailbox(value: string) {
+  const parsed = z.string().trim().email().max(254).safeParse(value);
+  if (!parsed.success) throw new Error("Google SMTP email address is invalid.");
+  return parsed.data;
+}
 
 export const googleSmtpSchema = z
   .object({
@@ -175,62 +187,23 @@ export async function saveGoogleSmtp(
   return safeGoogleSmtp(record);
 }
 
-function mimeWord(value: string) {
-  return /^[\x20-\x7e]*$/.test(value)
-    ? value
-    : `=?UTF-8?B?${Buffer.from(value).toString("base64")}?=`;
-}
-
-function safeHeader(value: string) {
-  return value.replace(/[\r\n]+/g, " ").trim();
-}
-
-export function buildGoogleSmtpMessage(input: {
-  fromEmail: string;
-  fromName: string;
-  to: string;
-  subject: string;
-  text: string;
-  html: string;
-}) {
-  const boundary = `konkon-${Date.now().toString(36)}`;
-  return [
-    `From: ${mimeWord(safeHeader(input.fromName))} <${safeHeader(input.fromEmail)}>`,
-    `To: <${safeHeader(input.to)}>`,
-    `Subject: ${mimeWord(safeHeader(input.subject))}`,
-    "MIME-Version: 1.0",
-    `Content-Type: multipart/alternative; boundary=\"${boundary}\"`,
-    "",
-    `--${boundary}`,
-    "Content-Type: text/plain; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    Buffer.from(input.text).toString("base64"),
-    `--${boundary}`,
-    "Content-Type: text/html; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    Buffer.from(input.html).toString("base64"),
-    `--${boundary}--`,
-    "",
-  ].join("\r\n");
-}
-
 export async function sendGoogleSmtp(
   config: GoogleSmtpConfig,
-  message: { to: string; subject: string; text: string; html: string },
+  message: { to: string; subject: string; text: string; html: string; replyTo?: string; inlineImages?: InlineEmailImage[] },
 ) {
+  const sender = googleMailbox(config.email);
+  const recipient = googleMailbox(message.to);
   const appPassword = decryptMemberToken(
     config.encryptedAppPassword,
     PASSWORD_CONTEXT,
   );
   const smtp = await openGoogleSmtp(config.email, appPassword);
   try {
-    await smtp.command(`MAIL FROM:<${config.email}>`, [250]);
-    await smtp.command(`RCPT TO:<${message.to}>`, [250, 251]);
+    await smtp.command(`MAIL FROM:<${sender}>`, [250]);
+    await smtp.command(`RCPT TO:<${recipient}>`, [250, 251]);
     await smtp.command("DATA", [354]);
     const content = buildGoogleSmtpMessage({
-      fromEmail: config.email,
+      fromEmail: sender,
       fromName: config.senderName,
       ...message,
     }).replace(/^\./gm, "..");

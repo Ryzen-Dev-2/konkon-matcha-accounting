@@ -9,7 +9,6 @@ import {
   ImagePlus,
   LoaderCircle,
   LockKeyhole,
-  MessageCircle,
   PackageCheck,
   ReceiptText,
   Send,
@@ -17,6 +16,7 @@ import {
   Truck,
 } from "lucide-react";
 import styles from "./storefront.module.css";
+import type { PublicBranding } from "@/lib/business-settings";
 
 type Message = {
   _id: string;
@@ -97,7 +97,13 @@ const stages = [
   "COMPLETED",
 ];
 
-export function PublicOrderView({ token }: { token: string }) {
+function BrandBadge({ branding }: { branding: PublicBranding }) {
+  return branding.workspaceLogoDataUrl
+    ? <img src={branding.workspaceLogoDataUrl} alt={`${branding.businessName} logo`} />
+    : <b>{branding.businessName.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase()}</b>;
+}
+
+export function PublicOrderView({ token, branding }: { token: string; branding: PublicBranding }) {
   const endpoint = `/api/storefront/${encodeURIComponent(token)}`;
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState("");
@@ -183,7 +189,7 @@ export function PublicOrderView({ token }: { token: string }) {
   return (
     <main className={styles.portalPage}>
       <header className={styles.portalHeader}>
-        <div><LockKeyhole size={17} /><span>PRIVATE ORDER WORKSPACE</span></div>
+        <div className={styles.portalBrand}><i><BrandBadge branding={branding} /></i><span><strong>{branding.businessName}</strong><small>PRIVATE ORDER WORKSPACE</small></span></div>
         <strong>{order.orderNo}</strong>
         <span className={styles.portalStatus}>{order.status.replaceAll("_", " ")}</span>
       </header>
@@ -255,10 +261,10 @@ export function PublicOrderView({ token }: { token: string }) {
         </aside>
 
         <section className={styles.chatPanel}>
-          <header><div><MessageCircle /><span><strong>Order chat</strong><small>Updates every few seconds</small></span></div><LockKeyhole size={17} /></header>
-          <div className={styles.messages}>
+          <header><div className={styles.chatIdentity}><i><BrandBadge branding={branding} /></i><span><strong>{branding.businessName} order care</strong><small><b />Live · updates automatically</small></span></div><div className={styles.chatSecurity}><LockKeyhole size={14} />Private</div></header>
+          <div className={styles.messages} aria-live="polite">
             {order.messages.map((message) => (
-              <article className={`${styles.message} ${styles[`message${message.sender}`]}`} key={message._id}>
+              <article className={`${styles.message} ${styles[`message${message.sender}`]} ${styles[`messageType${message.type}`] || ""}`} key={message._id}>
                 <header><strong>{message.sender === "CUSTOMER" ? "You" : message.sender === "STAFF" ? message.staffName || "Order team" : "Order update"}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(message.createdAt))}</time></header>
                 <p>{message.text}</p>
                 {message.attachment ? <a className={styles.attachmentLink} href={`${endpoint}/attachments/${message.attachment.id}`} target="_blank" rel="noreferrer"><PackageCheck size={16} /><span>{message.attachment.name}<small>{Math.ceil(message.attachment.size / 1024)} KB</small></span><ArrowUpRight size={14} /></a> : null}
@@ -271,7 +277,7 @@ export function PublicOrderView({ token }: { token: string }) {
             <form className={styles.chatComposer} onSubmit={send}>
               <input ref={fileRef} type="file" hidden accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,application/pdf" onChange={(event) => void upload(event.target.files?.[0])} />
               <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} aria-label="Share image or PDF"><ImagePlus /></button>
-              <textarea name="text" required maxLength={2000} rows={2} placeholder="Write a message to the order team" />
+              <textarea name="text" required maxLength={2000} rows={2} placeholder={`Message ${branding.businessName} order care`} />
               <button disabled={busy} aria-label="Send message">{busy ? <LoaderCircle className={styles.spin} /> : <Send />}</button>
             </form>
           ) : <p className={styles.closedChat}>This conversation is closed.</p>}
