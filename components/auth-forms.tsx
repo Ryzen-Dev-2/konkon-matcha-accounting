@@ -59,6 +59,8 @@ export function SetupForm() {
         ...regional,
         businessName: data.get("businessName"), fullName: data.get("fullName"), username: data.get("username"),
         email: data.get("email"), password: data.get("password"), seedProducts: data.get("seedProducts") === "on",
+        platformTermsAccepted: data.get("platformTermsAccepted") === "on",
+        platformPrivacyAccepted: data.get("platformPrivacyAccepted") === "on",
       }) });
       router.replace(result.redirectTo); router.refresh();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Setup failed."); setBusy(false); }
@@ -72,6 +74,8 @@ export function SetupForm() {
     <RegionalSettingsFields value={regional} onChange={setRegional} />
     <label className="check-row"><input name="seedProducts" type="checkbox" /><span><strong>Add sample Kōn-Kōn products</strong><small>Optional demo prices are examples in your chosen currency, not converted market prices. Review costs and opening stock before trading.</small></span></label>
     <label className="check-row"><input type="checkbox" required /><span>I have reviewed the accounting currency, local time zone and tax settings.</span></label>
+    <label className="check-row"><input name="platformTermsAccepted" type="checkbox" required /><span><strong>I accept the <Link href="/terms" target="_blank">platform use terms</Link>.</strong><small>Managed supervision is optional after setup and always requires a separate Owner application.</small></span></label>
+    <label className="check-row"><input name="platformPrivacyAccepted" type="checkbox" required /><span><strong>I acknowledge the privacy and managed-instance disclosure.</strong><small>The workspace keeps business data private. If I later apply for supervision, only disclosed deployment metadata is sent.</small></span></label>
     <button className="button button-primary button-large" disabled={busy || checking || configured}>{busy || checking ? <LoaderCircle className="spin" size={18} /> : <Sprout size={18} />}{checking ? "Checking workspace…" : busy ? "Preparing workspace…" : "Create Owner workspace"}<ArrowRight size={17} /></button>
     <p className="setup-link">Already set up? <Link href="/login">Return to sign in</Link></p>
   </form>;

@@ -5,6 +5,7 @@ import { hashPassword, isAuthConfigured, normalizeIdentity, setSession } from "@
 import { getDb, getMongoClient } from "@/lib/db";
 import { seedWorkspace } from "@/lib/seed";
 import { regionalSettingsSchema } from "@/lib/regional-settings";
+import { PLATFORM_DISCLOSURE_VERSION, PLATFORM_TERMS_VERSION } from "@/lib/platform-trust";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,8 @@ const setupSchema = regionalSettingsSchema.extend({
     .regex(/[A-Z]/, "Include an uppercase letter")
     .regex(/[0-9]/, "Include a number"),
   seedProducts: z.boolean().default(false),
+  platformTermsAccepted: z.literal(true, { error: "Accept the platform terms to create this workspace." }),
+  platformPrivacyAccepted: z.literal(true, { error: "Acknowledge the privacy and managed-instance disclosure." }),
 }).refine(value => value.acceptedCurrencies.includes(value.currency), { path: ["acceptedCurrencies"], message: "Include the base accounting currency." });
 
 export async function GET() {
@@ -83,6 +86,13 @@ export async function POST(request: Request) {
       await mongoSession.withTransaction(async () => {
         await db.collection("users").insertOne(user, { session: mongoSession });
         await seedWorkspace(db, _id, input.data.businessName, input.data.seedProducts, mongoSession, input.data);
+        await db.collection("platformAgreements").insertOne({
+          _id: "workspace",
+          termsVersion: PLATFORM_TERMS_VERSION,
+          disclosureVersion: PLATFORM_DISCLOSURE_VERSION,
+          acceptedBy: _id,
+          acceptedAt: now,
+        } as never, { session: mongoSession });
         await db.collection("auditLogs").insertOne({
           actorId: _id,
           actorName: user.fullName,
@@ -90,7 +100,7 @@ export async function POST(request: Request) {
           action: "workspace.setup",
           entityType: "workspace",
           entityId: "default",
-          details: { businessName: input.data.businessName, countryCode: input.data.countryCode, currency: input.data.currency, timeZone: input.data.timeZone, seededStarterProducts: input.data.seedProducts },
+          details: { businessName: input.data.businessName, countryCode: input.data.countryCode, currency: input.data.currency, timeZone: input.data.timeZone, seededStarterProducts: input.data.seedProducts, termsVersion: PLATFORM_TERMS_VERSION, disclosureVersion: PLATFORM_DISCLOSURE_VERSION },
           createdAt: now,
         }, { session: mongoSession });
       });

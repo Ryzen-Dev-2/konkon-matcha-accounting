@@ -41,12 +41,14 @@ import {
   BellRing,
   BadgeDollarSign,
   Combine,
+  ShieldAlert,
 } from "lucide-react";
 import type { SessionUser } from "@/lib/types";
 import { BusinessProvider } from "@/components/business-context";
 import type { BusinessSettings } from "@/lib/business-settings";
 import { countryProfile } from "@/lib/international";
 import { hasPermission, type Permission } from "@/lib/rbac";
+import { PlatformStatusMonitor } from "@/components/platform-status-monitor";
 
 type NavItem = {
   href: string;
@@ -239,6 +241,12 @@ const nav: NavItem[] = [
     permission: "owner.control",
   },
   {
+    href: "/trust-center",
+    label: "Trust & safety",
+    icon: ShieldAlert,
+    permission: "owner.control",
+  },
+  {
     href: "/settings",
     label: "Workspace",
     icon: Settings,
@@ -276,6 +284,7 @@ export function AppShell({
   const country = countryProfile(business.countryCode);
   return (
     <BusinessProvider profile={business}>
+      <PlatformStatusMonitor role={user.role} />
       <div
         className={`app-frame theme-${business.workspaceTheme.toLowerCase()} ${collapsed ? "sidebar-collapsed" : ""}`}
       >

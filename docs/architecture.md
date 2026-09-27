@@ -18,6 +18,14 @@ Permissions are enforced in API route handlers, not just hidden in the interface
 
 Sensitive mutations check same-origin requests and write an audit event.
 
+## Optional managed-instance trust boundary
+
+First-run setup records the accepted platform-policy and disclosure versions. This acceptance does not enroll the workspace or transmit its operating data. A separate Owner-only Trust & Safety application creates a random per-instance secret, stores it under authenticated encryption locally, and sends only the disclosed deployment origin, business display name, hosting provider, app/release version and the authority-observed server connection address. The authority encrypts its copy of the instance secret and never receives customer, member, order, receipt, invoice, accounting, payroll, inventory, password or session data through this channel.
+
+The authority returns a short-lived HMAC-signed policy containing status, reason, monotonic policy version and upstream release evidence. An enrolled workspace verifies the exact signature and freshness before updating the platform fields on its existing system-control record. Active browsers ask the local server for a refresh no more than once per minute; failed or unsigned refreshes retain the last verified state. `SUSPENDED` and `APPEAL` block every permission except the Owner-only control path needed to inspect status and submit an appeal. Since a source owner can alter self-hosted code, minification, VM packing and obfuscation are not described as tamper-proof. Enforcement is reliable only for managed signed builds whose server boundary and authority secret remain intact.
+
+Buyer reports exist only at the platform authority. Reports require an enrolled HTTPS origin, apply bounded per-connection rate limits, retain only a keyed connection fingerprint, encrypt an optional contact email and preserve submitted narrative/evidence links for human review. A deterministic score can surface open-report volume, reporter diversity, release drift and stale check-ins, but it never emits an enforcement action. Substantiation/dismissal and instance suspension/reopening are separate Owner decisions with reasons, optimistic versions and audit records. Source updates are notification-only until a GitHub App or equivalent deployment integration is explicitly authorised; the browser never receives a repository token or silently rewrites a fork.
+
 ## Register shifts
 
 Register control is enabled independently for each counter when its first shift opens. From that point, sales and refunds on that counter require one open shift. Opening float and closing counts are recorded by physical currency, while sales and payment-method summaries remain in the immutable ledger currency.

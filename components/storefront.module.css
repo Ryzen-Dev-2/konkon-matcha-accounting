@@ -598,3 +598,4 @@
   .storePage .storeHeroVideo { display: block; }
   .storeMascotOrbit i, .storeMascotOrbit span { animation: none; }
 }
+.trustReportLink{display:block;width:max-content;max-width:calc(100% - 40px);margin:42px auto 24px;color:inherit;opacity:.62;font-size:12px;text-underline-offset:4px}

@@ -5,6 +5,7 @@ This document prevents planned AutoCount-style modules from being confused with 
 ## Shipped and tested
 
 - Owner setup, RBAC, team lifecycle, forced password change and session revocation
+- Versioned first-use terms plus an optional managed-instance Trust & Safety programme with limited deployment-metadata consent, per-instance encrypted secrets, signed policy refresh, authority-side instance review, buyer reports, human-only suspension/reopen decisions, appeals, audit evidence and upstream release notifications. It does not copy tenant business data, silently update a fork, identify a suspicious person, or claim source obfuscation is unremovable.
 - Owner transfer cooling period and workspace open/read-only/closed controls
 - Multi-currency register opening/closing, operator accountability, X/Z reports and reviewed cash variances
 - Explainable exception review for unusual discounts, high refunds, inventory shrinkage, register variances and repeated sign-in failures, with assignment and immutable resolution history

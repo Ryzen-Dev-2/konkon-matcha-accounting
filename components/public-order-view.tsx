@@ -108,8 +108,14 @@ export function PublicOrderView({ token, branding }: { token: string; branding: 
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reportHref, setReportHref] = useState("https://konkon-matcha-accounting.vercel.app/report");
   const fileRef = useRef<HTMLInputElement>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const authority = process.env.NEXT_PUBLIC_PLATFORM_AUTHORITY_URL || "https://konkon-matcha-accounting.vercel.app";
+    setReportHref(`${authority.replace(/\/$/, "")}/report?instance=${encodeURIComponent(window.location.origin)}`);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -284,6 +290,7 @@ export function PublicOrderView({ token, branding }: { token: string; branding: 
           ) : <p className={styles.closedChat}>This conversation is closed.</p>}
         </section>
       </div>
+      <a className={styles.trustReportLink} href={reportHref}>Report a managed-store concern</a>
     </main>
   );
 }

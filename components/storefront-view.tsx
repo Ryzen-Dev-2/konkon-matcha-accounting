@@ -81,6 +81,12 @@ export function StorefrontView({ productId = "" }: { productId?: string }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<{ orderNo: string; message: string } | null>(null);
   const [preview, setPreview] = useState<Product | null>(null);
+  const [reportHref, setReportHref] = useState("https://konkon-matcha-accounting.vercel.app/report");
+
+  useEffect(() => {
+    const authority = process.env.NEXT_PUBLIC_PLATFORM_AUTHORITY_URL || "https://konkon-matcha-accounting.vercel.app";
+    setReportHref(`${authority.replace(/\/$/, "")}/report?instance=${encodeURIComponent(window.location.origin)}`);
+  }, []);
 
   useEffect(() => {
     const endpoint = productId
@@ -507,6 +513,7 @@ export function StorefrontView({ productId = "" }: { productId?: string }) {
       ) : null}
 
       {preview ? <div className={styles.previewBackdrop} role="presentation" onClick={() => setPreview(null)}><section className={styles.imagePreview} role="dialog" aria-modal="true" aria-label={`${preview.name} image preview`} onClick={(event) => event.stopPropagation()}><button onClick={() => setPreview(null)} aria-label="Close image preview"><X /></button><img src={preview.onlineImage} alt={preview.name} referrerPolicy="no-referrer" /><footer><span>{preview.category} · {preview.sku}</span><strong>{preview.name}</strong><small>{money.format(preview.price)} / {preview.unit}</small></footer></section></div> : null}
+      <a className={styles.trustReportLink} href={reportHref}>Report a managed-store concern</a>
     </main>
   );
 }

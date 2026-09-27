@@ -7,6 +7,10 @@ export type SystemControl = {
   reason: string;
   reopenAt: Date | null;
   scannerGeneration: number;
+  platformStatus: string;
+  platformReason: string;
+  platformPolicyVersion: number;
+  platformCheckedAt: Date | null;
   updatedAt?: Date;
 };
 
@@ -15,6 +19,10 @@ export const DEFAULT_SYSTEM_CONTROL: SystemControl = {
   reason: "",
   reopenAt: null,
   scannerGeneration: 1,
+  platformStatus: "UNMANAGED",
+  platformReason: "",
+  platformPolicyVersion: 0,
+  platformCheckedAt: null,
 };
 
 export async function getSystemControl(db: Db): Promise<SystemControl> {
@@ -28,13 +36,25 @@ export async function getSystemControl(db: Db): Promise<SystemControl> {
       { _id: "workspace" as never, mode },
       { $set: { mode: "OPEN", reason: "", reopenAt: null, updatedAt: now }, $inc: { scannerGeneration: 1 } },
     );
-    return { ...DEFAULT_SYSTEM_CONTROL, scannerGeneration: Number(saved.scannerGeneration || 1) + 1, updatedAt: now };
+    return {
+      ...DEFAULT_SYSTEM_CONTROL,
+      scannerGeneration: Number(saved.scannerGeneration || 1) + 1,
+      platformStatus: String(saved.platformStatus || "UNMANAGED"),
+      platformReason: String(saved.platformReason || ""),
+      platformPolicyVersion: Number(saved.platformPolicyVersion || 0),
+      platformCheckedAt: saved.platformCheckedAt instanceof Date ? saved.platformCheckedAt : null,
+      updatedAt: now,
+    };
   }
   return {
     mode,
     reason: String(saved.reason || ""),
     reopenAt,
     scannerGeneration: Number(saved.scannerGeneration || 1),
+    platformStatus: String(saved.platformStatus || "UNMANAGED"),
+    platformReason: String(saved.platformReason || ""),
+    platformPolicyVersion: Number(saved.platformPolicyVersion || 0),
+    platformCheckedAt: saved.platformCheckedAt instanceof Date ? saved.platformCheckedAt : null,
     updatedAt: saved.updatedAt instanceof Date ? saved.updatedAt : undefined,
   };
 }
