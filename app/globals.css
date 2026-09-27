@@ -4729,7 +4729,7 @@ a {
   width: min(560px, 100%);
 }
 .receipt-template-studio {
-  grid-template-columns: 225px minmax(390px, 1fr) minmax(320px, 0.8fr);
+  grid-template-columns: 190px minmax(0, 1fr);
 }
 .receipt-proof > div {
   align-items: start;
