@@ -174,6 +174,7 @@ export function PublicOrderView({ token, branding }: { token: string; branding: 
     return (
       <main className={styles.portalPage}>
         <section className={styles.portalLoading}>
+          <div className={styles.portalLoadingBrand}><i><BrandBadge branding={branding} /></i><strong>{branding.businessName}</strong></div>
           {error ? <><LockKeyhole /><h1>Private order unavailable</h1><p>{error}</p><Link href="/shop">Return to catalogue</Link></> : <><LoaderCircle className={styles.spin} /><p>Opening your private order workspace…</p></>}
         </section>
       </main>
