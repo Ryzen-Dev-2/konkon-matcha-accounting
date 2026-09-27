@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { Download, FileJson, ImagePlus, Palette, Plus, Save, Upload, X } from "lucide-react";
+import { Download, ImagePlus, Palette, Plus, Save, Upload, X } from "lucide-react";
 import { InvoicePaper } from "@/components/invoice-paper";
 import { DocumentLayoutEditor } from "@/components/document-layout-editor";
 import { useBusiness } from "@/components/business-context";
@@ -158,6 +158,8 @@ export function InvoiceTemplateStudio({ open, templates, initialTemplateId, onCl
             order={draft.blockOrder}
             customBlocks={draft.customBlocks}
             blockStyles={draft.blockStyles}
+            documentKey={draft._id || "NEW_INVOICE_TEMPLATE"}
+            preview={<InvoicePaper document={invoicePreview(profile, draft.termsDays)} template={draft} compact editorMode />}
             onChange={(blockOrder, customBlocks, blockStyles) => setDraft(current => ({ ...current, blockOrder, customBlocks, blockStyles }))}
             onError={message => show(message, "error")}
           />
@@ -165,8 +167,6 @@ export function InvoiceTemplateStudio({ open, templates, initialTemplateId, onCl
         </div>
         <footer><button type="button" className="button button-secondary" onClick={onClose}>Close</button><button className="button button-primary" disabled={busy}><Save size={16} />{busy ? "Saving…" : draft._id ? "Save changes" : "Add template"}</button></footer>
       </form>
-
-      <aside className="template-proof"><header><FileJson size={15} /><span>LIVE PAPER PROOF</span></header><div><InvoicePaper document={invoicePreview(profile, draft.termsDays)} template={draft} compact /></div></aside>
     </div>
   </Modal>;
 }

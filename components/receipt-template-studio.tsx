@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { Download, ImagePlus, Palette, Plus, ReceiptText, Save, Upload, X } from "lucide-react";
+import { Download, ImagePlus, Palette, Plus, Save, Upload, X } from "lucide-react";
 import { ReceiptPaper } from "@/components/receipt-paper";
 import { DocumentLayoutEditor } from "@/components/document-layout-editor";
 import { useBusiness } from "@/components/business-context";
@@ -175,6 +175,8 @@ export function ReceiptTemplateStudio({ open, templates, initialTemplateId, onCl
             order={draft.blockOrder}
             customBlocks={draft.customBlocks}
             blockStyles={draft.blockStyles}
+            documentKey={draft._id || "NEW_RECEIPT_TEMPLATE"}
+            preview={<ReceiptPaper document={receiptPreview(profile)} template={draft} compact editorMode />}
             compact
             onChange={(blockOrder, customBlocks, blockStyles) => setDraft(current => ({ ...current, blockOrder, customBlocks, blockStyles }))}
             onError={message => show(message, "error")}
@@ -183,8 +185,6 @@ export function ReceiptTemplateStudio({ open, templates, initialTemplateId, onCl
         </div>
         <footer><button type="button" className="button button-secondary" onClick={onClose}>Close</button><button className="button button-primary" disabled={busy}><Save size={16} />{busy ? "Saving…" : draft._id ? "Save changes" : "Add template"}</button></footer>
       </form>
-
-      <aside className="template-proof receipt-proof"><header><ReceiptText size={15} /><span>LIVE THERMAL PROOF</span></header><div><ReceiptPaper document={receiptPreview(profile)} template={draft} compact /></div></aside>
     </div>
   </Modal>;
 }

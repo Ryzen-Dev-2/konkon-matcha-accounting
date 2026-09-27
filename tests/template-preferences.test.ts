@@ -183,5 +183,20 @@ test("document builders preserve every required financial block while allowing o
     blockOrder: [...DEFAULT_INVOICE_TEMPLATE.blockOrder, "CUSTOM:section-divider"],
     customBlocks: [{ id: "section-divider", kind: "DIVIDER", label: "Section divider", content: "", alignment: "CENTER" }],
   }).success, true);
+  const richBlocks = [
+    { id: "heading-block", kind: "HEADING" as const, label: "Heading", content: "Delivery details", alignment: "LEFT" as const },
+    { id: "qr-code-block", kind: "QR" as const, label: "Track order", content: "https://example.com/orders/123", alignment: "CENTER" as const },
+    { id: "signature-block", kind: "SIGNATURE" as const, label: "Approval", content: "Authorised signature", alignment: "LEFT" as const },
+  ];
+  assert.equal(invoiceTemplateInputSchema.safeParse({
+    ...DEFAULT_INVOICE_TEMPLATE,
+    blockOrder: [...DEFAULT_INVOICE_TEMPLATE.blockOrder, ...richBlocks.map(block => customBlockKey(block.id))],
+    customBlocks: richBlocks,
+  }).success, true);
+  assert.equal(invoiceTemplateInputSchema.safeParse({
+    ...DEFAULT_INVOICE_TEMPLATE,
+    blockOrder: [...DEFAULT_INVOICE_TEMPLATE.blockOrder, "CUSTOM:unsafe-qr"],
+    customBlocks: [{ id: "unsafe-qr", kind: "QR", label: "Unsafe QR", content: "javascript:alert(1)", alignment: "CENTER" }],
+  }).success, false);
   assert.equal(normaliseTemplateBlockStyles([], ["HEADER"])[0]?.width, "FULL");
 });

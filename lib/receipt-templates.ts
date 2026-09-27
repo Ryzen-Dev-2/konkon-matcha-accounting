@@ -31,9 +31,9 @@ export const receiptTemplateInputSchema = z.object({
   showMember: z.boolean().default(true),
   showPaymentDetails: z.boolean().default(true),
   showPoints: z.boolean().default(true),
-  blockOrder: z.array(z.string().max(80)).max(20).default([...RECEIPT_TEMPLATE_BLOCKS]),
-  customBlocks: z.array(templateCustomBlockSchema).max(6).default([]),
-  blockStyles: z.array(templateBlockStyleSchema).max(20).default([]),
+  blockOrder: z.array(z.string().max(80)).max(24).default([...RECEIPT_TEMPLATE_BLOCKS]),
+  customBlocks: z.array(templateCustomBlockSchema).max(12).default([]),
+  blockStyles: z.array(templateBlockStyleSchema).max(24).default([]),
   isDefault: z.boolean().default(false),
 }).superRefine((value, context) => {
   const issue = validateTemplateBlocks(value.blockOrder, value.customBlocks, RECEIPT_TEMPLATE_BLOCKS);

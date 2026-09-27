@@ -59,15 +59,19 @@ export type ReceiptPaperDocument = {
 
 function customBlockContent(block: TemplateCustomBlock) {
   if (block.kind === "IMAGE") return <img src={block.content} alt={block.label} />;
+  if (block.kind === "HEADING") return <h3>{block.content}</h3>;
+  if (block.kind === "QR") return <div className="document-custom-qr-code"><QrImage value={block.content} label={block.label} width={112} /><span>{block.label}</span></div>;
+  if (block.kind === "SIGNATURE") return <div className="document-custom-signature"><span /><strong>{block.content}</strong></div>;
   if (block.kind === "DIVIDER") return <hr aria-label={block.label} />;
   if (block.kind === "SPACER") return <span className="document-spacer" aria-label={block.label} />;
   return <p>{block.content}</p>;
 }
 
-export function ReceiptPaper({ document, template = DEFAULT_RECEIPT_TEMPLATE, compact = false }: {
+export function ReceiptPaper({ document, template = DEFAULT_RECEIPT_TEMPLATE, compact = false, editorMode = false }: {
   document: ReceiptPaperDocument;
   template?: ReceiptTemplateInput;
   compact?: boolean;
+  editorMode?: boolean;
 }) {
   const business = document.businessSnapshot || {};
   const currency = /^[A-Z]{3}$/.test(business.currency || "") ? business.currency! : "SGD";
@@ -82,7 +86,7 @@ export function ReceiptPaper({ document, template = DEFAULT_RECEIPT_TEMPLATE, co
   const customBlocks = template.customBlocks || [];
   const logoSrc = template.logoDataUrl || business.workspaceLogoDataUrl || "";
   const blockOrder = normaliseTemplateBlockOrder(template.blockOrder, DEFAULT_RECEIPT_TEMPLATE.blockOrder, customBlocks);
-  const hasCanvasLayout = Boolean(template.blockStyles?.length);
+  const hasCanvasLayout = editorMode || Boolean(template.blockStyles?.length);
   const blockStyles = normaliseTemplateBlockStyles(template.blockStyles, blockOrder);
   const customByKey = new Map(customBlocks.map(block => [customBlockKey(block.id), block]));
   const blocks: Record<string, ReactNode> = {

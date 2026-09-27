@@ -15,16 +15,27 @@ export const templateBlockStyleSchema = z.object({
 
 export const templateCustomBlockSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]{8,64}$/),
-  kind: z.enum(["TEXT", "IMAGE", "CALLOUT", "DIVIDER", "SPACER"]),
+  kind: z.enum(["HEADING", "TEXT", "IMAGE", "CALLOUT", "QR", "SIGNATURE", "DIVIDER", "SPACER"]),
   label: z.string().trim().min(1).max(60),
   content: z.string().max(280_000),
   alignment: z.enum(TEMPLATE_BLOCK_ALIGNMENTS).default("LEFT"),
 }).superRefine((block, context) => {
-  if (["TEXT", "CALLOUT"].includes(block.kind) && (!block.content.trim() || block.content.length > 1_000)) {
+  if (["HEADING", "TEXT", "CALLOUT", "SIGNATURE"].includes(block.kind) && (!block.content.trim() || block.content.length > 1_000)) {
     context.addIssue({ code: "custom", path: ["content"], message: "Text components require 1–1,000 characters." });
+  }
+  if (block.kind === "SIGNATURE" && block.content.length > 120) {
+    context.addIssue({ code: "custom", path: ["content"], message: "Signature labels must be 120 characters or fewer." });
   }
   if (block.kind === "IMAGE" && !/^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(block.content)) {
     context.addIssue({ code: "custom", path: ["content"], message: "Image components must contain an uploaded PNG, JPEG or WebP." });
+  }
+  if (block.kind === "QR") {
+    try {
+      const url = new URL(block.content);
+      if (url.protocol !== "https:") throw new Error("Unsupported protocol");
+    } catch {
+      context.addIssue({ code: "custom", path: ["content"], message: "QR components require a complete HTTPS link." });
+    }
   }
 });
 
@@ -47,7 +58,7 @@ export function validateTemplateBlocks(
     return "The document component order is incomplete.";
   }
   if (customBlocks.reduce((total, block) => total + block.content.length, 0) > 300_000) {
-    return "Custom component content is too large. Keep the combined total under 220 KB.";
+    return "Custom component content is too large. Keep the combined total under 300 KB.";
   }
   return null;
 }
