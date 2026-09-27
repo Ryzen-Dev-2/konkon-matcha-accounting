@@ -8,6 +8,21 @@ export const DEFAULT_PLATFORM_AUTHORITY = "https://konkon-matcha-accounting.verc
 export const PLATFORM_STATUSES = ["PENDING", "ACTIVE", "SUSPENDED", "APPEAL", "REJECTED"] as const;
 export type PlatformStatus = (typeof PLATFORM_STATUSES)[number];
 
+export type PlatformRestriction = {
+  status: "SUSPENDED" | "APPEAL";
+  reason: string;
+  appealPath: "/appeal";
+};
+
+export function platformRestrictionFromControl(control: { platformStatus: string; platformReason: string }): PlatformRestriction | null {
+  if (control.platformStatus !== "SUSPENDED" && control.platformStatus !== "APPEAL") return null;
+  return {
+    status: control.platformStatus,
+    reason: control.platformReason || "This managed deployment is locked while a platform review is in progress.",
+    appealPath: "/appeal",
+  };
+}
+
 export const REPORT_CATEGORIES = ["FRAUD", "IMPERSONATION", "NON_DELIVERY", "PAYMENT_ABUSE", "CONTROLLED_GOODS", "OTHER"] as const;
 
 export const enrollmentSchema = z.object({

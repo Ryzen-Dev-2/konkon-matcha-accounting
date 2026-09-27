@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { created, fail, publicError } from "@/lib/api";
+import { blockRestrictedPlatform, created, fail, publicError } from "@/lib/api";
 import { getDb, getMongoClient } from "@/lib/db";
 import { currencyCodeSchema } from "@/lib/international";
 import { PAYMENT_PROVIDERS, normaliseVerificationCode, verificationCodeHash, verifyPaymentWebhook } from "@/lib/payment-verification";
@@ -18,6 +18,8 @@ const confirmationSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const rawBody = await request.text();
     const eventId = request.headers.get("x-payment-event-id")?.trim() || "";
     const timestamp = request.headers.get("x-payment-timestamp")?.trim() || "";

@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb";
-import { fail, ok, publicError, sameOrigin } from "@/lib/api";
+import { blockRestrictedPlatform, fail, ok, publicError, sameOrigin } from "@/lib/api";
 import { getDb } from "@/lib/db";
 import { serialise } from "@/lib/format";
 import { broadcastNotification } from "@/lib/notification-connectors";
@@ -69,6 +69,8 @@ export async function GET(
   context: { params: Promise<{ token: string }> },
 ) {
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const { token } = await context.params;
     const found = await findOrder(token);
     if (!found)
@@ -88,6 +90,8 @@ export async function POST(
 ) {
   if (!sameOrigin(request)) return fail("This request was blocked.", 403);
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const { token } = await context.params;
     const found = await findOrder(token);
     if (!found)

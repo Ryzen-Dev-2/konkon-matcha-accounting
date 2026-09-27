@@ -1,6 +1,6 @@
 import { ObjectId } from "mongodb";
 import { z } from "zod";
-import { authorize, created, fail, ok, publicError, sameOrigin } from "@/lib/api";
+import { authorize, blockRestrictedPlatform, created, fail, ok, publicError, sameOrigin } from "@/lib/api";
 import { getDb } from "@/lib/db";
 import { normaliseScanCode, scannerTokenHash } from "@/lib/scanner";
 import { scannerPurposeFilter, scannerPurpose, scannerPermission, SCANNER_PURPOSES, type ScannerPurpose } from "@/lib/scanner-routing";
@@ -50,6 +50,8 @@ async function waitForPendingEvents(db: Awaited<ReturnType<typeof getDb>>, scann
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return fail("This request was blocked.", 403);
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const body = await readOwnerRecoveryJson(request);
     const connectInput = connectSchema.safeParse(body);
     const input = scanSchema.safeParse(body);

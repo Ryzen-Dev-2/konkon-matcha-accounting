@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { fail, ok, publicError, sameOrigin } from "@/lib/api";
+import { blockRestrictedPlatform, fail, ok, publicError, sameOrigin } from "@/lib/api";
 import { getDb } from "@/lib/db";
 import { paymentDisplayTokenHash } from "@/lib/payment-display";
 import { getSystemControl } from "@/lib/system-control";
@@ -11,6 +11,8 @@ const pollSchema = z.object({ token: z.string().min(32).max(128), action: z.lite
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return fail("This request was blocked.", 403);
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const input = pollSchema.safeParse(await request.json());
     if (!input.success) return fail("This payment-screen request is invalid.", 422);
     const db = await getDb();

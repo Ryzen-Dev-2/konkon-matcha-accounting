@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { ObjectId } from "mongodb";
-import { fail, created, ok, publicError, sameOrigin } from "@/lib/api";
+import { blockRestrictedPlatform, fail, created, ok, publicError, sameOrigin } from "@/lib/api";
 import { normaliseBusinessSettings } from "@/lib/business-settings";
 import { getDb } from "@/lib/db";
 import { makeDocumentNo } from "@/lib/format";
@@ -34,6 +34,8 @@ function throttleKey(request: Request, email: string, now: Date) {
 
 export async function GET(request: Request) {
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const requestedProduct = new URL(request.url).searchParams.get("product");
     const productId = requestedProduct
       ? storefrontProductIdSchema.safeParse(requestedProduct)
@@ -103,6 +105,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return fail("This request was blocked.", 403);
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const parsed = onlineOrderRequestSchema.safeParse(await request.json());
     if (!parsed.success)
       return fail(

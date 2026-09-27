@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     await authenticated.db.collection("platformInstances").updateOne(
       { _id: input.data.instanceId as never },
       {
-        $set: { status: "APPEAL", statusReason: "Appeal received; restrictions remain while a human reviewer checks it.", appealMessage: input.data.message, appealAt: now, updatedAt: now },
+        $set: { status: "APPEAL", appealMessage: input.data.message, appealAt: now, updatedAt: now },
         $inc: { version: 1 },
         $push: { history: { $each: [{ action: "APPEAL", reason: input.data.message, at: now, actor: "INSTANCE_OWNER" }], $slice: -100 } } as never,
       },

@@ -4,7 +4,8 @@ import { readSession } from "@/lib/auth";
 import { hasPermission, type Permission } from "@/lib/rbac";
 import { getDb } from "@/lib/db";
 import type { UserRole } from "@/lib/types";
-import { getSystemControl, isWritePermission } from "@/lib/system-control";
+import { isWritePermission } from "@/lib/system-control";
+import { getEffectiveSystemControl, getPlatformRestriction } from "@/lib/platform-restriction";
 
 export function ok<T>(data: T, init?: ResponseInit) {
   const headers = new Headers(init?.headers);
@@ -20,7 +21,7 @@ export function fail(error: string, status = 400, issues?: Record<string, string
   return NextResponse.json({ ok: false, error, ...(issues ? { issues } : {}) }, { status, headers: { "Cache-Control": "private, no-store, max-age=0" } });
 }
 
-export async function authorize(permission: Permission, options: { allowReadOnlyWrite?: boolean } = {}) {
+export async function authorize(permission: Permission, options: { allowReadOnlyWrite?: boolean; allowPlatformRestricted?: boolean } = {}) {
   const session = await readSession();
   if (!session) return { error: fail("Your session has expired. Sign in again.", 401) } as const;
   if (!ObjectId.isValid(session.id)) return { error: fail("Your session is invalid. Sign in again.", 401) } as const;
@@ -31,7 +32,7 @@ export async function authorize(permission: Permission, options: { allowReadOnly
         { _id: new ObjectId(session.id), active: true },
         { projection: { role: 1, username: 1, fullName: 1, sessionVersion: 1, mustChangePassword: 1 } },
       ),
-      getSystemControl(db),
+      getEffectiveSystemControl(db),
     ]);
     if (!user) return { error: fail("This account is no longer active.", 401) } as const;
     if (Number(session.sessionVersion || 0) !== Number(user.sessionVersion || 0)) {
@@ -44,8 +45,8 @@ export async function authorize(permission: Permission, options: { allowReadOnly
     if (session.mustChangePassword) {
       return { error: fail("Change your temporary password before using the workspace.", 428) } as const;
     }
-    if (["SUSPENDED", "APPEAL"].includes(system.platformStatus) && permission !== "owner.control") {
-      return { error: fail(system.platformReason || "This managed workspace is restricted while a platform review is in progress.", 423) } as const;
+    if (["SUSPENDED", "APPEAL"].includes(system.platformStatus) && !options.allowPlatformRestricted) {
+      return { error: fail(`${system.platformReason || "This managed workspace is restricted while a platform review is in progress."} Owner appeal: /appeal`, 423) } as const;
     }
     if (system.mode === "CLOSED" && !["settings.read", "settings.write", "team.read", "team.write", "owner.control"].includes(permission)) {
       return { error: fail(system.reason || "This workspace is temporarily closed by the Owner.", 423) } as const;
@@ -61,6 +62,11 @@ export async function authorize(permission: Permission, options: { allowReadOnly
     return { error: fail("You do not have permission to perform this action.", 403) } as const;
   }
   return { session } as const;
+}
+
+export async function blockRestrictedPlatform() {
+  const restriction = await getPlatformRestriction();
+  return restriction ? fail(`${restriction.reason} Owner appeal: ${restriction.appealPath}`, 423) : null;
 }
 
 export function publicError(error: unknown) {

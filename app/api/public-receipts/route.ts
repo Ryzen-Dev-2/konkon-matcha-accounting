@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb";
-import { fail, ok, sameOrigin } from "@/lib/api";
+import { blockRestrictedPlatform, fail, ok, sameOrigin } from "@/lib/api";
 import { getDb } from "@/lib/db";
 import { receiptScanToken, receiptTokenId } from "@/lib/scan-codes";
 import { publicReceipt, validReceiptAccess, receiptAccessUrl } from "@/lib/receipt-access";
@@ -10,6 +10,8 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return fail("This request was blocked.", 403);
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const body = await readOwnerRecoveryJson(request) as { token?: unknown };
     const token = typeof body?.token === "string" ? receiptScanToken(body.token) : "";
     const id = receiptTokenId(token);

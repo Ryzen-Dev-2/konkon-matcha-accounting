@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PublicOrderView } from "@/components/public-order-view";
+import { PublicPlatformBoundary } from "@/components/platform-lock-screen";
 import { readPublicBranding } from "@/lib/public-branding";
 
 export const metadata: Metadata = {
@@ -15,5 +16,5 @@ export default async function OrderPage({
 }) {
   const { token } = await params;
   const branding = await readPublicBranding();
-  return <PublicOrderView token={token} branding={branding} />;
+  return <PublicPlatformBoundary><PublicOrderView token={token} branding={branding} /></PublicPlatformBoundary>;
 }

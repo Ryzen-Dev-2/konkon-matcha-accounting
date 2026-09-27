@@ -1,6 +1,6 @@
 import { ObjectId } from "mongodb";
 import { createHash } from "node:crypto";
-import { fail, ok, publicError } from "@/lib/api";
+import { blockRestrictedPlatform, fail, ok, publicError } from "@/lib/api";
 import {
   bankFeedPayloadSchema,
   normaliseBankFeedEvent,
@@ -15,6 +15,8 @@ const secretContext = (id: string) => `bank-feed:${id}:webhook-secret:v1`;
 
 export async function POST(request: Request) {
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const connectionId = request.headers.get("x-konkon-bank-connection") || "";
     const timestamp = request.headers.get("x-konkon-bank-timestamp") || "";
     const signature = request.headers.get("x-konkon-bank-signature") || "";

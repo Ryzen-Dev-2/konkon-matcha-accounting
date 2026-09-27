@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
 import { NinjaVanError, parseVerifiedNinjaVanWebhook } from "@/lib/ninja-van";
+import { blockRestrictedPlatform } from "@/lib/api";
 
 export const runtime = "nodejs";
 export const maxDuration = 10;
@@ -10,6 +11,8 @@ export async function POST(request: Request) {
   const signature = request.headers.get("x-ninjavan-hmac-sha256") || "";
   if (!signature) return new Response("Missing signature", { status: 401 });
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const rawBody = await request.text();
     if (Buffer.byteLength(rawBody, "utf8") > 262_144) return new Response("Payload too large", { status: 413 });
     const db = await getDb();

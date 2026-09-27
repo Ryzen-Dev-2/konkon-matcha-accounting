@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import styles from "./index.module.css";
 import { CinematicIndexHero } from "@/components/cinematic-index-hero";
+import { PublicPlatformBoundary } from "@/components/platform-lock-screen";
 import { readPublicBranding } from "@/lib/public-branding";
 
 const inter = Inter({ subsets: ["latin"], display: "swap" });
@@ -20,12 +21,12 @@ export const dynamic = "force-dynamic";
 export default async function IndexPage() {
   const branding = await readPublicBranding();
   return (
-    <main className={`${styles.home} ${inter.className}`}>
+    <PublicPlatformBoundary><main className={`${styles.home} ${inter.className}`}>
       <a className={styles.skip} href="#hero-content">Skip to content</a>
       <CinematicIndexHero
         businessName={branding.businessName}
         workspaceLogoDataUrl={branding.workspaceLogoDataUrl}
       />
-    </main>
+    </main></PublicPlatformBoundary>
   );
 }

@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb";
-import { fail, ok, publicError, sameOrigin } from "@/lib/api";
+import { blockRestrictedPlatform, fail, ok, publicError, sameOrigin } from "@/lib/api";
 import { getDb } from "@/lib/db";
 import { serialise } from "@/lib/format";
 import {
@@ -18,6 +18,8 @@ export async function POST(
 ) {
   if (!sameOrigin(request)) return fail("This request was blocked.", 403);
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const { token } = await context.params;
     const access = parseOrderAccessToken(token);
     if (!access)

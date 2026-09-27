@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb";
-import { fail, publicError } from "@/lib/api";
+import { blockRestrictedPlatform, fail, publicError } from "@/lib/api";
 import { attachmentContentDisposition } from "@/lib/attachment-files";
 import {
   getAttachmentStorageConfig,
@@ -19,6 +19,8 @@ export async function GET(
   context: { params: Promise<{ token: string; id: string }> },
 ) {
   try {
+    const blocked = await blockRestrictedPlatform();
+    if (blocked) return blocked;
     const { token, id } = await context.params;
     const access = parseOrderAccessToken(token);
     if (!access || !ObjectId.isValid(id))

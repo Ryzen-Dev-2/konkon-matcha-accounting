@@ -27,7 +27,7 @@ const actionSchema = z.discriminatedUnion("action", [
 ]);
 
 export async function GET(request: Request) {
-  const auth = await authorize("owner.control", { allowReadOnlyWrite: true });
+  const auth = await authorize("owner.control", { allowReadOnlyWrite: true, allowPlatformRestricted: true });
   if (auth.error) return auth.error;
   try {
     const db = await getDb();
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await authorize("owner.control", { allowReadOnlyWrite: true });
+  const auth = await authorize("owner.control", { allowReadOnlyWrite: true, allowPlatformRestricted: true });
   if (auth.error) return auth.error;
   if (!sameOrigin(request)) return fail("This request was blocked.", 403);
   if (isPlatformAuthority(request)) return fail("The platform authority cannot enroll itself as a managed clone.", 409);

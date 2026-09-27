@@ -4,6 +4,7 @@ import {
   assessInstanceRisk,
   enrollmentSchema,
   normaliseOrigin,
+  platformRestrictionFromControl,
   PLATFORM_DISCLOSURE_VERSION,
   PLATFORM_TERMS_VERSION,
   signPlatformPolicy,
@@ -47,4 +48,12 @@ test("risk scoring highlights reports but never returns an enforcement decision"
   assert.equal(risk.band, "HIGH");
   assert.ok(risk.signals.some(signal => signal.includes("open report")));
   assert.equal("action" in risk, false);
+});
+
+test("suspension and appeal keep every public surface locked with the recorded reason", () => {
+  assert.equal(platformRestrictionFromControl({ platformStatus: "ACTIVE", platformReason: "" }), null);
+  assert.deepEqual(platformRestrictionFromControl({ platformStatus: "SUSPENDED", platformReason: "Verified payment abuse." }), {
+    status: "SUSPENDED", reason: "Verified payment abuse.", appealPath: "/appeal",
+  });
+  assert.equal(platformRestrictionFromControl({ platformStatus: "APPEAL", platformReason: "Original ban reason." })?.reason, "Original ban reason.");
 });
