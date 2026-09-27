@@ -12732,6 +12732,15 @@ textarea:focus-visible {
 .regional-settings select:disabled {
   opacity: 0.75;
 }
+.regional-settings .field.field-invalid select,
+.regional-settings .field.field-invalid input {
+  border-color: #b63f4b;
+  box-shadow: 0 0 0 3px rgba(182, 63, 75, 0.12);
+}
+.regional-settings .field .field-error {
+  color: #9a2f3b;
+  font-weight: 700;
+}
 @media (max-width: 720px) {
   .regional-settings .form-grid {
     grid-template-columns: minmax(0, 1fr);

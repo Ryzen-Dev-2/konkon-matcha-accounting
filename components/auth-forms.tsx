@@ -4,9 +4,9 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowRight, Eye, EyeOff, LoaderCircle, LockKeyhole, Sprout } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { apiRequest, Notice } from "@/components/ui";
+import { apiRequest, ApiRequestError, Notice } from "@/components/ui";
 import { RegionalSettingsFields } from "@/components/regional-settings-fields";
-import { EMPTY_REGIONAL_SETTINGS } from "@/lib/regional-settings";
+import { EMPTY_REGIONAL_SETTINGS, regionalSettingsSchema } from "@/lib/regional-settings";
 
 function PasswordField({ name, label, autoComplete = "current-password" }: { name: string; label: string; autoComplete?: string }) {
   const [visible, setVisible] = useState(false);
@@ -42,6 +42,7 @@ export function SetupForm() {
   const [checking, setChecking] = useState(true);
   const [configured, setConfigured] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   useEffect(() => {
     apiRequest<{ configured: boolean }>("/api/setup")
       .then((result) => {
@@ -52,8 +53,18 @@ export function SetupForm() {
       .finally(() => setChecking(false));
   }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError("");
-    const data = new FormData(event.currentTarget);
+    event.preventDefault(); const form = event.currentTarget; setError(""); setFieldErrors({});
+    const regionalCheck = regionalSettingsSchema.safeParse(regional);
+    if (!regionalCheck.success) {
+      const issues = regionalCheck.error.flatten().fieldErrors as Record<string, string[]>;
+      setFieldErrors(issues);
+      setError("Review the highlighted country, currency and regional settings.");
+      const first = Object.keys(issues)[0] === "acceptedCurrencies" ? "currency" : Object.keys(issues)[0];
+      requestAnimationFrame(() => form.querySelector<HTMLElement>(`[name="${first}"]`)?.focus());
+      return;
+    }
+    setBusy(true);
+    const data = new FormData(form);
     try {
       const result = await apiRequest<{ redirectTo: string }>("/api/setup", { method: "POST", body: JSON.stringify({
         ...regional,
@@ -63,7 +74,7 @@ export function SetupForm() {
         platformPrivacyAccepted: data.get("platformPrivacyAccepted") === "on",
       }) });
       router.replace(result.redirectTo); router.refresh();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Setup failed."); setBusy(false); }
+    } catch (reason) { if (reason instanceof ApiRequestError && reason.issues) setFieldErrors(reason.issues); setError(reason instanceof Error ? reason.message : "Setup failed."); setBusy(false); }
   }
   return <form className="auth-form setup-form" onSubmit={submit}>
     <div className="auth-title"><span className="eyebrow">FIRST POUR</span><h1>Set up your<br />matchā ledger.</h1><p>This creates the only Owner account. The Owner can invite every other role later.</p></div>
@@ -71,7 +82,7 @@ export function SetupForm() {
     <div className="form-grid two"><label className="field"><span>Business name</span><input name="businessName" defaultValue="Kōn-Kōn Matchā" required /></label><label className="field"><span>Owner&apos;s full name</span><input name="fullName" autoComplete="name" required /></label></div>
     <div className="form-grid two"><label className="field"><span>Username</span><input name="username" autoComplete="username" pattern="[A-Za-z0-9._-]+" required /></label><label className="field"><span>Email</span><input name="email" type="email" autoComplete="email" required /></label></div>
     <PasswordField name="password" label="Owner password · 12+ characters, mixed case and a number" autoComplete="new-password" />
-    <RegionalSettingsFields value={regional} onChange={setRegional} />
+    <RegionalSettingsFields value={regional} onChange={next => { setRegional(next); setFieldErrors({}); }} errors={fieldErrors} />
     <label className="check-row"><input name="seedProducts" type="checkbox" /><span><strong>Add sample Kōn-Kōn products</strong><small>Optional demo prices are examples in your chosen currency, not converted market prices. Review costs and opening stock before trading.</small></span></label>
     <label className="check-row"><input type="checkbox" required /><span>I have reviewed the accounting currency, local time zone and tax settings.</span></label>
     <label className="check-row"><input name="platformTermsAccepted" type="checkbox" required /><span><strong>I accept the <Link href="/terms" target="_blank">platform use terms</Link>.</strong><small>Managed supervision is optional after setup and always requires a separate Owner application.</small></span></label>
