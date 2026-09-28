@@ -32,7 +32,7 @@ export async function PATCH(request: Request) {
       role: user.role,
       sessionVersion,
       mustChangePassword: false,
-    });
+    }, db);
     await writeAudit(db, session, "user.password_change", "user", session.id);
     return ok({ changed: true });
   } catch (error) {

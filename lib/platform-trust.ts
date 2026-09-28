@@ -1,9 +1,10 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
+import { OFFICIAL_APPEAL_URL, OFFICIAL_PLATFORM_ORIGIN } from "@/lib/platform-public";
 
 export const PLATFORM_TERMS_VERSION = "2026-09-27";
 export const PLATFORM_DISCLOSURE_VERSION = "2026-09-27";
-export const DEFAULT_PLATFORM_AUTHORITY = "https://konkon-matcha-accounting.vercel.app";
+export const DEFAULT_PLATFORM_AUTHORITY = OFFICIAL_PLATFORM_ORIGIN;
 
 export const PLATFORM_STATUSES = ["PENDING", "ACTIVE", "SUSPENDED", "APPEAL", "REJECTED"] as const;
 export type PlatformStatus = (typeof PLATFORM_STATUSES)[number];
@@ -11,7 +12,7 @@ export type PlatformStatus = (typeof PLATFORM_STATUSES)[number];
 export type PlatformRestriction = {
   status: "SUSPENDED" | "APPEAL";
   reason: string;
-  appealPath: "/appeal";
+  appealUrl: typeof OFFICIAL_APPEAL_URL;
 };
 
 export function platformRestrictionFromControl(control: { platformStatus: string; platformReason: string }): PlatformRestriction | null {
@@ -19,7 +20,7 @@ export function platformRestrictionFromControl(control: { platformStatus: string
   return {
     status: control.platformStatus,
     reason: control.platformReason || "This managed deployment is locked while a platform review is in progress.",
-    appealPath: "/appeal",
+    appealUrl: OFFICIAL_APPEAL_URL,
   };
 }
 
@@ -68,7 +69,8 @@ export const appealSchema = z.object({
 }).strict();
 
 export function platformAuthorityUrl() {
-  return normaliseOrigin(process.env.PLATFORM_AUTHORITY_URL || DEFAULT_PLATFORM_AUTHORITY, false) || DEFAULT_PLATFORM_AUTHORITY;
+  if (process.env.NODE_ENV === "production") return DEFAULT_PLATFORM_AUTHORITY;
+  return normaliseOrigin(process.env.PLATFORM_AUTHORITY_URL || DEFAULT_PLATFORM_AUTHORITY, true) || DEFAULT_PLATFORM_AUTHORITY;
 }
 
 export function normaliseOrigin(value: string, allowLocal = process.env.NODE_ENV !== "production") {

@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, FileWarning, LoaderCircle, LockKeyhole, ShieldAlert } from "lucide-react";
 import { apiRequest } from "@/components/ui";
+import { OFFICIAL_PLATFORM_ORIGIN, OFFICIAL_TERMS_URL } from "@/lib/platform-public";
 import styles from "./platform-report-form.module.css";
 
 const categories = [
@@ -32,7 +32,7 @@ export function PlatformReportForm({ initialDomain }: { initialDomain: string })
   }
 
   return <main className={styles.page}>
-    <nav><Link href="/"><ArrowLeft size={16} />Platform home</Link><span>TRUST DESK / BUYER REPORT</span></nav>
+    <nav><a href={OFFICIAL_PLATFORM_ORIGIN}><ArrowLeft size={16} />Platform home</a><span>TRUST DESK / BUYER REPORT</span></nav>
     <div className={styles.layout}>
       <aside>
         <span className={styles.kicker}>INDEPENDENT REVIEW</span>
@@ -41,7 +41,7 @@ export function PlatformReportForm({ initialDomain }: { initialDomain: string })
         <dl><div><dt>01</dt><dd>Describe what happened</dd></div><div><dt>02</dt><dd>Preserve receipts and messages</dd></div><div><dt>03</dt><dd>Reviewer checks the evidence</dd></div></dl>
       </aside>
       <section className={styles.formPanel}>
-        {success ? <div className={styles.success}><i><Check /></i><span>REPORT RECEIVED</span><h2>{success.reportNo}</h2><p>{success.message}</p><Link href="/">Done</Link></div> : <form onSubmit={submit}>
+        {success ? <div className={styles.success}><i><Check /></i><span>REPORT RECEIVED</span><h2>{success.reportNo}</h2><p>{success.message}</p><a href={OFFICIAL_PLATFORM_ORIGIN}>Done</a></div> : <form onSubmit={submit}>
           <header><ShieldAlert /><div><span>SECURE INTAKE</span><h2>Buyer conduct report</h2></div></header>
           <label><span>Store deployment origin</span><input name="domain" defaultValue={initialDomain} placeholder="https://store.example.com" required /></label>
           <div className={styles.pair}><label><span>Concern type</span><select name="category" defaultValue="FRAUD">{categories.map(([value,label]) => <option value={value} key={value}>{label}</option>)}</select></label><label><span>Order reference · optional</span><input name="orderReference" maxLength={100} /></label></div>
@@ -49,7 +49,7 @@ export function PlatformReportForm({ initialDomain }: { initialDomain: string })
           <label><span>Detailed account</span><textarea name="details" minLength={30} maxLength={4000} rows={7} required placeholder="Include dates, what was promised, what happened and what resolution you sought." /></label>
           <label><span>Evidence links · optional, one HTTPS URL per line</span><textarea name="evidenceUrls" rows={3} placeholder="https://…" /></label>
           <label><span>Contact email · optional</span><input name="reporterEmail" type="email" maxLength={254} /><small>Encrypted at rest and used only if a reviewer needs clarification.</small></label>
-          <label className={styles.consent}><input name="privacyAccepted" type="checkbox" required /><span><LockKeyhole size={16} /><b>I confirm this report is honest and acknowledge the <Link href="/terms" target="_blank">privacy disclosure</Link>.</b></span></label>
+          <label className={styles.consent}><input name="privacyAccepted" type="checkbox" required /><span><LockKeyhole size={16} /><b>I confirm this report is honest and acknowledge the <a href={OFFICIAL_TERMS_URL} target="_blank" rel="noreferrer">privacy disclosure</a>.</b></span></label>
           {error ? <p className={styles.error}>{error}</p> : null}
           <button disabled={busy}>{busy ? <LoaderCircle className={styles.spin} /> : <FileWarning />}{busy ? "Securing report…" : "Submit for human review"}<ArrowRight /></button>
         </form>}

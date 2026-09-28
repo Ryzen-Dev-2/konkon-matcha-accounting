@@ -133,7 +133,7 @@ export async function POST(request: Request) {
     const secret = decryptMemberToken(String(existing.encryptedSecret), localPlatformSecretContext(instanceId));
     if (input.data.action === "APPEAL") {
       const appeal = appealSchema.parse({ instanceId, message: input.data.message });
-      const response = await fetch(`${String(existing.authorityUrl)}/api/platform/policy`, {
+      const response = await fetch(`${platformAuthorityUrl()}/api/platform/policy`, {
         method: "POST",
         headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(appeal),

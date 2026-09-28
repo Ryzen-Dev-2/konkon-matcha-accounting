@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createSessionToken, SESSION_COOKIE } from "../lib/auth";
+import { createSessionToken, registerSessionToken, SESSION_COOKIE, sessionContextHash } from "../lib/auth";
 import { getDb } from "../lib/db";
 import type { UserRole } from "../lib/types";
 
@@ -9,20 +9,24 @@ const db = await getDb();
 const user = await db.collection("users").findOne({ active: true, mustChangePassword: { $ne: true } }, { sort: { role: 1 } });
 if (!user) throw new Error("No active workspace user is available for the user-flow smoke test.");
 
-const token = await createSessionToken({
+const userAgent = "konkon-user-smoke/1.0";
+const sessionUser = {
   id: user._id.toHexString(),
   username: String(user.username),
   fullName: String(user.fullName),
   role: user.role as UserRole,
   sessionVersion: Number(user.sessionVersion || 0),
   mustChangePassword: false,
-});
+};
+const token = await createSessionToken(sessionUser, { contextHash: sessionContextHash(userAgent) });
+await registerSessionToken(db, sessionUser, token);
 const cookie = `${SESSION_COOKIE}=${token}`;
 
 async function request(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   headers.set("cookie", cookie);
   headers.set("accept", "application/json");
+  headers.set("user-agent", userAgent);
   if (init.body) headers.set("content-type", "application/json");
   if (init.method && init.method !== "GET") {
     headers.set("origin", baseUrl);

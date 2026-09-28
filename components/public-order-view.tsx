@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import styles from "./storefront.module.css";
 import type { PublicBranding } from "@/lib/business-settings";
+import { OFFICIAL_REPORT_URL } from "@/lib/platform-public";
 
 type Message = {
   _id: string;
@@ -108,13 +109,12 @@ export function PublicOrderView({ token, branding }: { token: string; branding: 
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [reportHref, setReportHref] = useState("https://konkon-matcha-accounting.vercel.app/report");
+  const [reportHref, setReportHref] = useState(OFFICIAL_REPORT_URL);
   const fileRef = useRef<HTMLInputElement>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const authority = process.env.NEXT_PUBLIC_PLATFORM_AUTHORITY_URL || "https://konkon-matcha-accounting.vercel.app";
-    setReportHref(`${authority.replace(/\/$/, "")}/report?instance=${encodeURIComponent(window.location.origin)}`);
+    setReportHref(`${OFFICIAL_REPORT_URL}?instance=${encodeURIComponent(window.location.origin)}`);
   }, []);
 
   const load = useCallback(async () => {

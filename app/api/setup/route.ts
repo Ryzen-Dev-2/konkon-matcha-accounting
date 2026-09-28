@@ -105,7 +105,7 @@ export async function POST(request: Request) {
         }, { session: mongoSession });
       });
     } finally { await mongoSession.endSession(); }
-    await setSession({ id: _id.toHexString(), username: user.username, fullName: user.fullName, role: user.role, sessionVersion: user.sessionVersion, mustChangePassword: false });
+    await setSession({ id: _id.toHexString(), username: user.username, fullName: user.fullName, role: user.role, sessionVersion: user.sessionVersion, mustChangePassword: false }, db);
     return created({ redirectTo: "/dashboard" });
   } catch (error) {
     if (lockCreated) {

@@ -53,7 +53,7 @@ test("risk scoring highlights reports but never returns an enforcement decision"
 test("suspension and appeal keep every public surface locked with the recorded reason", () => {
   assert.equal(platformRestrictionFromControl({ platformStatus: "ACTIVE", platformReason: "" }), null);
   assert.deepEqual(platformRestrictionFromControl({ platformStatus: "SUSPENDED", platformReason: "Verified payment abuse." }), {
-    status: "SUSPENDED", reason: "Verified payment abuse.", appealPath: "/appeal",
+    status: "SUSPENDED", reason: "Verified payment abuse.", appealUrl: "https://konkon.valaxscrub.com/appeal",
   });
   assert.equal(platformRestrictionFromControl({ platformStatus: "APPEAL", platformReason: "Original ban reason." })?.reason, "Original ban reason.");
 });

@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     if (input.data.action === "INSPECT") return ok(await inspectOwnerRecovery(db, input.data.token));
     const user = await claimOwnerRecovery(db, await getMongoClient(), input.data);
     try {
-      await setSession(user);
+      await setSession(user, db);
       return created({ redirectTo: "/dashboard" });
     } catch {
       // The new account is already committed. Never report a creation failure or

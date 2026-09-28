@@ -3,9 +3,9 @@ import { ObjectId } from "mongodb";
 import { readSession } from "@/lib/auth";
 import { hasPermission, type Permission } from "@/lib/rbac";
 import { getDb } from "@/lib/db";
-import type { UserRole } from "@/lib/types";
 import { isWritePermission } from "@/lib/system-control";
 import { getEffectiveSystemControl, getPlatformRestriction } from "@/lib/platform-restriction";
+import { OFFICIAL_APPEAL_URL } from "@/lib/platform-public";
 
 export function ok<T>(data: T, init?: ResponseInit) {
   const headers = new Headers(init?.headers);
@@ -27,26 +27,12 @@ export async function authorize(permission: Permission, options: { allowReadOnly
   if (!ObjectId.isValid(session.id)) return { error: fail("Your session is invalid. Sign in again.", 401) } as const;
   try {
     const db = await getDb();
-    const [user, system] = await Promise.all([
-      db.collection("users").findOne(
-        { _id: new ObjectId(session.id), active: true },
-        { projection: { role: 1, username: 1, fullName: 1, sessionVersion: 1, mustChangePassword: 1 } },
-      ),
-      getEffectiveSystemControl(db),
-    ]);
-    if (!user) return { error: fail("This account is no longer active.", 401) } as const;
-    if (Number(session.sessionVersion || 0) !== Number(user.sessionVersion || 0)) {
-      return { error: fail("Your access changed. Sign in again to continue.", 401) } as const;
-    }
-    session.role = user.role as UserRole;
-    session.username = String(user.username);
-    session.fullName = String(user.fullName);
-    session.mustChangePassword = Boolean(user.mustChangePassword);
+    const system = await getEffectiveSystemControl(db);
     if (session.mustChangePassword) {
       return { error: fail("Change your temporary password before using the workspace.", 428) } as const;
     }
     if (["SUSPENDED", "APPEAL"].includes(system.platformStatus) && !options.allowPlatformRestricted) {
-      return { error: fail(`${system.platformReason || "This managed workspace is restricted while a platform review is in progress."} Owner appeal: /appeal`, 423) } as const;
+      return { error: fail(`${system.platformReason || "This managed workspace is restricted while a platform review is in progress."} Owner appeal: ${OFFICIAL_APPEAL_URL}`, 423) } as const;
     }
     if (system.mode === "CLOSED" && !["settings.read", "settings.write", "team.read", "team.write", "owner.control"].includes(permission)) {
       return { error: fail(system.reason || "This workspace is temporarily closed by the Owner.", 423) } as const;
@@ -66,7 +52,7 @@ export async function authorize(permission: Permission, options: { allowReadOnly
 
 export async function blockRestrictedPlatform() {
   const restriction = await getPlatformRestriction();
-  return restriction ? fail(`${restriction.reason} Owner appeal: ${restriction.appealPath}`, 423) : null;
+  return restriction ? fail(`${restriction.reason} Owner appeal: ${restriction.appealUrl}`, 423) : null;
 }
 
 export function publicError(error: unknown) {
@@ -99,10 +85,12 @@ export function publicError(error: unknown) {
 
 export function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "").split(",")[0].trim();
+  const protocol = (request.headers.get("x-forwarded-proto") || new URL(request.url).protocol.replace(":", "") || "https").split(",")[0].trim();
   if (!origin || !host) return process.env.NODE_ENV !== "production";
   try {
-    return new URL(origin).host === host;
+    const supplied = new URL(origin);
+    return supplied.origin === new URL(`${protocol}://${host}`).origin;
   } catch {
     return false;
   }

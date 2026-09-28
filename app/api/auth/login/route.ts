@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       sessionVersion: Number(user.sessionVersion || 0),
       mustChangePassword: Boolean(user.mustChangePassword),
     };
-    await setSession(sessionUser);
+    await setSession(sessionUser, db);
     await db.collection("authThrottle").deleteOne({ key });
     await db.collection("users").updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
     await writeAudit(db, sessionUser, "auth.login", "user", id);

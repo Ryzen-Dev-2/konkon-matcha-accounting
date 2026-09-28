@@ -5,7 +5,7 @@ namespace KonkonMatcha.Client;
 public partial class MainPage : ContentPage
 {
     private const string EndpointKey = "konkon-service-endpoint";
-    private const string DefaultEndpoint = "https://konkon-matcha-accounting.vercel.app";
+    private const string DefaultEndpoint = "https://konkon.valaxscrub.com";
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private Uri? allowedOrigin;
 

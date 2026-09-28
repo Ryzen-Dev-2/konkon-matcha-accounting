@@ -11,6 +11,8 @@ export type SessionUser = {
 };
 
 export type SessionPayload = SessionUser & {
+  sessionId: string;
+  contextHash: string;
   exp?: number;
   iat?: number;
 };

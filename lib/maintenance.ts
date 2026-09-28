@@ -10,6 +10,7 @@ import { deliverOrderEmail } from "./order-email";
 const expiringCollections = {
   scannerEvents: "expiresAt", scannerSessions: "expiresAt", paymentDisplaySessions: "expiresAt",
   authThrottle: "expiresAt", sensitiveLookupEvents: "expiresAt", localPaymentEvents: "expireAt",
+  authSessions: "expiresAt",
   paymentWebhookEvents: "createdAt", auditLogs: "expiresAt", memberCards: "deletedAt",
   onlineOrderThrottle: "expiresAt",
   notificationWebhookEvents: "expiresAt",

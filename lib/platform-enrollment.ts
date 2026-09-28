@@ -1,6 +1,6 @@
 import type { Db } from "mongodb";
 import { decryptMemberToken } from "@/lib/member-cards";
-import { verifyPlatformPolicy, type PlatformPolicy } from "@/lib/platform-trust";
+import { platformAuthorityUrl, verifyPlatformPolicy, type PlatformPolicy } from "@/lib/platform-trust";
 
 export function localPlatformSecretContext(instanceId: string) {
   return `platform-enrollment:${instanceId}:secret:v1`;
@@ -15,7 +15,8 @@ export async function readPlatformEnvelope(response: Response) {
 export async function syncManagedPolicy(db: Db, enrollment: Record<string, unknown>) {
   const instanceId = String(enrollment.instanceId || "");
   const secret = decryptMemberToken(String(enrollment.encryptedSecret || ""), localPlatformSecretContext(instanceId));
-  const response = await fetch(`${String(enrollment.authorityUrl)}/api/platform/policy?instanceId=${encodeURIComponent(instanceId)}`, {
+  const authorityUrl = platformAuthorityUrl();
+  const response = await fetch(`${authorityUrl}/api/platform/policy?instanceId=${encodeURIComponent(instanceId)}`, {
     headers: { Authorization: `Bearer ${secret}`, Accept: "application/json" },
     cache: "no-store",
     signal: AbortSignal.timeout(12_000),
@@ -30,7 +31,7 @@ export async function syncManagedPolicy(db: Db, enrollment: Record<string, unkno
   await Promise.all([
     db.collection("platformEnrollments").updateOne(
       { _id: "workspace" as never, instanceId },
-      { $set: { status: payload.policy.status, statusReason: payload.policy.reason, policyVersion: payload.policy.version, latestReleaseSha: payload.policy.latestReleaseSha, updateUrl: payload.policy.updateUrl, lastSyncAt: now, updatedAt: now }, $inc: { version: 1 } },
+      { $set: { authorityUrl, status: payload.policy.status, statusReason: payload.policy.reason, policyVersion: payload.policy.version, latestReleaseSha: payload.policy.latestReleaseSha, updateUrl: payload.policy.updateUrl, lastSyncAt: now, updatedAt: now }, $inc: { version: 1 } },
     ),
     db.collection("systemControls").updateOne(
       { _id: "workspace" as never },

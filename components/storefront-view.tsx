@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import styles from "./storefront.module.css";
+import { OFFICIAL_REPORT_URL } from "@/lib/platform-public";
 
 type Product = {
   _id: string;
@@ -81,11 +82,10 @@ export function StorefrontView({ productId = "" }: { productId?: string }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<{ orderNo: string; message: string } | null>(null);
   const [preview, setPreview] = useState<Product | null>(null);
-  const [reportHref, setReportHref] = useState("https://konkon-matcha-accounting.vercel.app/report");
+  const [reportHref, setReportHref] = useState(OFFICIAL_REPORT_URL);
 
   useEffect(() => {
-    const authority = process.env.NEXT_PUBLIC_PLATFORM_AUTHORITY_URL || "https://konkon-matcha-accounting.vercel.app";
-    setReportHref(`${authority.replace(/\/$/, "")}/report?instance=${encodeURIComponent(window.location.origin)}`);
+    setReportHref(`${OFFICIAL_REPORT_URL}?instance=${encodeURIComponent(window.location.origin)}`);
   }, []);
 
   useEffect(() => {

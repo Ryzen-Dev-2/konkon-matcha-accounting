@@ -30,11 +30,29 @@ const nextConfig: NextConfig = {
         { key: "X-Content-Type-Options", value: "nosniff" },
         { key: "X-Frame-Options", value: "DENY" },
         { key: "X-DNS-Prefetch-Control", value: "off" },
+        { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
         { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+        { key: "Origin-Agent-Cluster", value: "?1" },
+        { key: "Referrer-Policy", value: "no-referrer" },
         { key: "Permissions-Policy", value: "camera=(self), nfc=(self), microphone=(), geolocation=()" },
         { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
         { key: "Content-Security-Policy", value: contentSecurityPolicy },
+      ],
+    },
+    {
+      source: "/api/:path*",
+      headers: [
+        { key: "Cache-Control", value: "private, no-store, max-age=0" },
+        { key: "Pragma", value: "no-cache" },
+        { key: "Expires", value: "0" },
+      ],
+    },
+    {
+      source: "/:path(login|setup|change-password|recover-owner|appeal|report|trust-center)",
+      headers: [
+        { key: "Cache-Control", value: "private, no-store, max-age=0" },
+        { key: "X-Robots-Tag", value: "noindex, nofollow" },
       ],
     },
     {

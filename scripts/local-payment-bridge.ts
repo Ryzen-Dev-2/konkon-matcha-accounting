@@ -32,7 +32,7 @@ const host = "127.0.0.1";
 const port = Number(process.env.LOCAL_PAYMENT_BRIDGE_PORT || 17321);
 if (!Number.isInteger(port) || port < 1024 || port > 65_535) throw new Error("LOCAL_PAYMENT_BRIDGE_PORT must be between 1024 and 65535.");
 
-const allowedOrigins = new Set((process.env.LOCAL_PAYMENT_BRIDGE_ORIGINS || "http://localhost:3000,http://127.0.0.1:3000,https://konkon-matcha-accounting.vercel.app")
+const allowedOrigins = new Set((process.env.LOCAL_PAYMENT_BRIDGE_ORIGINS || "http://localhost:3000,http://127.0.0.1:3000,https://konkon.valaxscrub.com")
   .split(",").map((value) => value.trim()).filter(Boolean));
 const allowedSenders = (process.env.LOCAL_PAYMENT_ALLOWED_SENDERS || "").split(",").map((value) => value.trim()).filter(Boolean);
 const pairCode = process.env.LOCAL_PAYMENT_PAIR_CODE?.trim() || String(randomInt(100_000, 1_000_000));
