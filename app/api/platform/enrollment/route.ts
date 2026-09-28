@@ -20,8 +20,11 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
+const safeEnrollmentProjection = { encryptedSecret: 0, verifiedPolicy: 0, policySignature: 0 } as const;
+
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("ENROLL"), termsAccepted: z.literal(true), privacyAccepted: z.literal(true) }).strict(),
+  z.object({ action: z.literal("CONSENT"), termsAccepted: z.literal(true), privacyAccepted: z.literal(true) }).strict(),
   z.object({ action: z.literal("SYNC") }).strict(),
   z.object({ action: z.literal("APPEAL"), message: z.string().trim().min(30).max(2000) }).strict(),
 ]);
@@ -32,12 +35,12 @@ export async function GET(request: Request) {
   try {
     const db = await getDb();
     if (isPlatformAuthority(request)) return ok({ authority: true, release: latestRelease() });
-    let enrollment = await db.collection("platformEnrollments").findOne({ _id: "workspace" as never }, { projection: { encryptedSecret: 0 } });
+    let enrollment = await db.collection("platformEnrollments").findOne({ _id: "workspace" as never }, { projection: safeEnrollmentProjection });
     let syncError = "";
     if (enrollment) {
       try {
         await syncManagedPolicy(db, { ...enrollment, encryptedSecret: (await db.collection("platformEnrollments").findOne({ _id: "workspace" as never }, { projection: { encryptedSecret: 1 } }))?.encryptedSecret });
-        enrollment = await db.collection("platformEnrollments").findOne({ _id: "workspace" as never }, { projection: { encryptedSecret: 0 } });
+        enrollment = await db.collection("platformEnrollments").findOne({ _id: "workspace" as never }, { projection: safeEnrollmentProjection });
       } catch (error) {
         syncError = error instanceof Error ? error.message : "Could not refresh the signed platform policy.";
       }
@@ -104,7 +107,7 @@ export async function POST(request: Request) {
       });
       const authority = await readPlatformEnvelope(response) as { status?: string; version?: number };
       const now = new Date();
-      await db.collection("platformEnrollments").insertOne({
+      const enrollment = {
         _id: "workspace",
         instanceId,
         authorityUrl,
@@ -123,20 +126,48 @@ export async function POST(request: Request) {
         version: 1,
         createdAt: now,
         updatedAt: now,
-      } as never);
+      };
+      await db.collection("platformEnrollments").insertOne(enrollment as never);
+      try { await syncManagedPolicy(db, enrollment); }
+      catch { /* The signed status check retries while the deployment stays locked. */ }
       await writeAudit(db, auth.session, "platform.enrollment_submitted", "workspace", "default", { instanceId, domain, authorityUrl, termsVersion: PLATFORM_TERMS_VERSION, disclosureVersion: PLATFORM_DISCLOSURE_VERSION });
-      return ok({ status: "PENDING", message: "The managed-instance application was submitted for platform Owner review." });
+      return ok({ status: "PENDING", message: "Mandatory managed-service consent was recorded. This deployment stays locked until platform Owner approval." });
     }
 
     if (!existing) return fail("This workspace is not enrolled in managed-instance supervision.", 404);
     const instanceId = String(existing.instanceId);
     const secret = decryptMemberToken(String(existing.encryptedSecret), localPlatformSecretContext(instanceId));
+    if (input.data.action === "CONSENT") {
+      const response = await fetch(`${platformAuthorityUrl()}/api/platform/policy`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          action: "CONSENT",
+          instanceId,
+          termsAccepted: true,
+          privacyAccepted: true,
+          termsVersion: PLATFORM_TERMS_VERSION,
+          disclosureVersion: PLATFORM_DISCLOSURE_VERSION,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      await readPlatformEnvelope(response);
+      const now = new Date();
+      await db.collection("platformEnrollments").updateOne(
+        { _id: "workspace" as never, instanceId },
+        { $set: { termsVersion: PLATFORM_TERMS_VERSION, disclosureVersion: PLATFORM_DISCLOSURE_VERSION, termsAcceptedAt: now, termsAcceptedBy: auth.session.id, updatedAt: now }, $inc: { version: 1 } },
+      );
+      await writeAudit(db, auth.session, "platform.consent_renewed", "workspace", "default", { instanceId, termsVersion: PLATFORM_TERMS_VERSION, disclosureVersion: PLATFORM_DISCLOSURE_VERSION });
+      const refreshed = await db.collection("platformEnrollments").findOne({ _id: "workspace" as never });
+      const policy = refreshed ? await syncManagedPolicy(db, refreshed) : null;
+      return ok({ status: policy?.status || "PENDING", message: "Current mandatory managed-service terms were accepted. Signed status verification has been refreshed." });
+    }
     if (input.data.action === "APPEAL") {
       const appeal = appealSchema.parse({ instanceId, message: input.data.message });
       const response = await fetch(`${platformAuthorityUrl()}/api/platform/policy`, {
         method: "POST",
         headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(appeal),
+        body: JSON.stringify({ action: "APPEAL", ...appeal }),
         signal: AbortSignal.timeout(15_000),
       });
       const result = await readPlatformEnvelope(response);

@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import type { UserRole } from "@/lib/types";
 import { repeatedLoginFailureReview, writeOperationalReview } from "@/lib/operational-reviews";
+import { getPlatformRestriction } from "@/lib/platform-restriction";
 
 export const runtime = "nodejs";
 
@@ -80,6 +81,11 @@ export async function POST(request: Request) {
       return fail("The username or password is incorrect.", 401);
     }
 
+    const restriction = await getPlatformRestriction(db);
+    if (restriction && user.role !== "OWNER") {
+      return fail("This managed deployment is locked. Only the Owner can sign in to complete consent or submit an appeal.", 423);
+    }
+
     const id = (user._id as ObjectId).toHexString();
     const sessionUser = {
       id,
@@ -93,7 +99,7 @@ export async function POST(request: Request) {
     await db.collection("authThrottle").deleteOne({ key });
     await db.collection("users").updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
     await writeAudit(db, sessionUser, "auth.login", "user", id);
-    return ok({ user: sessionUser, redirectTo: user.mustChangePassword ? "/change-password" : "/dashboard" });
+    return ok({ user: sessionUser, redirectTo: user.mustChangePassword ? "/change-password" : restriction ? "/trust-center" : "/dashboard" });
   } catch (error) {
     return publicError(error);
   }

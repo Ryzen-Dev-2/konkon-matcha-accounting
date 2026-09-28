@@ -5,7 +5,7 @@ import { hasPermission, type Permission } from "@/lib/rbac";
 import { getDb } from "@/lib/db";
 import { isWritePermission } from "@/lib/system-control";
 import { getEffectiveSystemControl, getPlatformRestriction } from "@/lib/platform-restriction";
-import { OFFICIAL_APPEAL_URL } from "@/lib/platform-public";
+import { platformRestrictionFromControl } from "@/lib/platform-trust";
 
 export function ok<T>(data: T, init?: ResponseInit) {
   const headers = new Headers(init?.headers);
@@ -31,8 +31,10 @@ export async function authorize(permission: Permission, options: { allowReadOnly
     if (session.mustChangePassword) {
       return { error: fail("Change your temporary password before using the workspace.", 428) } as const;
     }
-    if (["SUSPENDED", "APPEAL"].includes(system.platformStatus) && !options.allowPlatformRestricted) {
-      return { error: fail(`${system.platformReason || "This managed workspace is restricted while a platform review is in progress."} Owner appeal: ${OFFICIAL_APPEAL_URL}`, 423) } as const;
+    const platformRestriction = platformRestrictionFromControl(system);
+    if (platformRestriction && !options.allowPlatformRestricted) {
+      const ownerAction = platformRestriction.ownerAction === "APPEAL" ? platformRestriction.appealUrl : "/trust-center";
+      return { error: fail(`${platformRestriction.reason} Owner action: ${ownerAction}`, 423) } as const;
     }
     if (system.mode === "CLOSED" && !["settings.read", "settings.write", "team.read", "team.write", "owner.control"].includes(permission)) {
       return { error: fail(system.reason || "This workspace is temporarily closed by the Owner.", 423) } as const;
@@ -52,7 +54,9 @@ export async function authorize(permission: Permission, options: { allowReadOnly
 
 export async function blockRestrictedPlatform() {
   const restriction = await getPlatformRestriction();
-  return restriction ? fail(`${restriction.reason} Owner appeal: ${restriction.appealUrl}`, 423) : null;
+  if (!restriction) return null;
+  const ownerAction = restriction.ownerAction === "APPEAL" ? restriction.appealUrl : "/trust-center";
+  return fail(`${restriction.reason} Owner action: ${ownerAction}`, 423);
 }
 
 export function publicError(error: unknown) {

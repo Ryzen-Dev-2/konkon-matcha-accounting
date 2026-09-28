@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   assessInstanceRisk,
   enrollmentSchema,
+  isPlatformPolicyFresh,
   normaliseOrigin,
   platformRestrictionFromControl,
   PLATFORM_DISCLOSURE_VERSION,
@@ -41,6 +42,9 @@ test("platform policies are signed per instance and reject tampering", () => {
   assert.equal(verifyPlatformPolicy(policy, signature, secret), true);
   assert.equal(verifyPlatformPolicy({ ...policy, status: "SUSPENDED" }, signature, secret), false);
   assert.equal(verifyPlatformPolicy(policy, signature, "q".repeat(43)), false);
+  assert.equal(isPlatformPolicyFresh(policy), true);
+  assert.equal(isPlatformPolicyFresh({ ...policy, issuedAt: new Date(Date.now() - 16 * 60_000).toISOString() }), false);
+  assert.equal(isPlatformPolicyFresh({ ...policy, issuedAt: new Date(Date.now() + 6 * 60_000).toISOString() }), false);
 });
 
 test("risk scoring highlights reports but never returns an enforcement decision", () => {
@@ -50,10 +54,14 @@ test("risk scoring highlights reports but never returns an enforcement decision"
   assert.equal("action" in risk, false);
 });
 
-test("suspension and appeal keep every public surface locked with the recorded reason", () => {
+test("every non-active managed state keeps public and authenticated surfaces locked", () => {
   assert.equal(platformRestrictionFromControl({ platformStatus: "ACTIVE", platformReason: "" }), null);
   assert.deepEqual(platformRestrictionFromControl({ platformStatus: "SUSPENDED", platformReason: "Verified payment abuse." }), {
-    status: "SUSPENDED", reason: "Verified payment abuse.", appealUrl: "https://konkon.valaxscrub.com/appeal",
+    status: "SUSPENDED", reason: "Verified payment abuse.", appealUrl: "https://konkon.valaxscrub.com/appeal", ownerAction: "APPEAL",
   });
   assert.equal(platformRestrictionFromControl({ platformStatus: "APPEAL", platformReason: "Original ban reason." })?.reason, "Original ban reason.");
+  assert.equal(platformRestrictionFromControl({ platformStatus: "CONSENT_REQUIRED", platformReason: "" })?.ownerAction, "CONSENT");
+  assert.equal(platformRestrictionFromControl({ platformStatus: "VERIFICATION_REQUIRED", platformReason: "" })?.ownerAction, "CONSENT");
+  assert.equal(platformRestrictionFromControl({ platformStatus: "PENDING", platformReason: "" })?.ownerAction, "WAIT");
+  assert.equal(platformRestrictionFromControl({ platformStatus: "REJECTED", platformReason: "" })?.ownerAction, "APPEAL");
 });

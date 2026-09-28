@@ -4,6 +4,7 @@ import { fail, ok, publicError, sameOrigin } from "@/lib/api";
 import { hashPassword, readSession, setSession, verifyPassword } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { getDb } from "@/lib/db";
+import { getPlatformRestriction } from "@/lib/platform-restriction";
 
 const passwordSchema = z.object({
   currentPassword: z.string().min(1).max(128),
@@ -18,6 +19,9 @@ export async function PATCH(request: Request) {
     const input = passwordSchema.safeParse(await request.json());
     if (!input.success) return fail("The new password must be at least 12 characters with upper and lowercase letters and a number.", 422);
     const db = await getDb();
+    if (session.role !== "OWNER" && await getPlatformRestriction(db)) {
+      return fail("This managed deployment is locked. Only the Owner can use the consent or appeal path.", 423);
+    }
     const user = await db.collection("users").findOne({ _id: new ObjectId(session.id), active: true });
     if (!user || !(await verifyPassword(input.data.currentPassword, String(user.passwordHash)))) return fail("The current password is incorrect.", 401);
     const sessionVersion = Number(user.sessionVersion || 0) + 1;

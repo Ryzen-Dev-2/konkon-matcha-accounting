@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       });
     } finally { await mongoSession.endSession(); }
     await setSession({ id: _id.toHexString(), username: user.username, fullName: user.fullName, role: user.role, sessionVersion: user.sessionVersion, mustChangePassword: false }, db);
-    return created({ redirectTo: "/dashboard" });
+    return created({ redirectTo: "/trust-center" });
   } catch (error) {
     if (lockCreated) {
       try {

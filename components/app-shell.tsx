@@ -257,10 +257,12 @@ const nav: NavItem[] = [
 export function AppShell({
   user,
   business,
+  platformRestriction,
   children,
 }: {
   user: SessionUser;
   business: BusinessSettings;
+  platformRestriction?: { status: string; reason: string } | null;
   children: React.ReactNode;
 }) {
   const path = usePathname();
@@ -284,7 +286,7 @@ export function AppShell({
   const country = countryProfile(business.countryCode);
   return (
     <BusinessProvider profile={business}>
-      <PlatformStatusMonitor role={user.role} />
+      <PlatformStatusMonitor role={user.role} initialStatus={platformRestriction ? { ...platformRestriction, managed: true } : null} />
       <div
         className={`app-frame theme-${business.workspaceTheme.toLowerCase()} ${collapsed ? "sidebar-collapsed" : ""}`}
       >

@@ -2,25 +2,37 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { OFFICIAL_APPEAL_URL, OFFICIAL_PLATFORM_ORIGIN } from "@/lib/platform-public";
 
-export const PLATFORM_TERMS_VERSION = "2026-09-27";
+export const PLATFORM_TERMS_VERSION = "2026-09-28";
 export const PLATFORM_DISCLOSURE_VERSION = "2026-09-27";
+export const PLATFORM_POLICY_LEASE_MS = 15 * 60_000;
 export const DEFAULT_PLATFORM_AUTHORITY = OFFICIAL_PLATFORM_ORIGIN;
 
 export const PLATFORM_STATUSES = ["PENDING", "ACTIVE", "SUSPENDED", "APPEAL", "REJECTED"] as const;
 export type PlatformStatus = (typeof PLATFORM_STATUSES)[number];
 
 export type PlatformRestriction = {
-  status: "SUSPENDED" | "APPEAL";
+  status: "CONSENT_REQUIRED" | "VERIFICATION_REQUIRED" | "PENDING" | "SUSPENDED" | "APPEAL" | "REJECTED";
   reason: string;
   appealUrl: typeof OFFICIAL_APPEAL_URL;
+  ownerAction: "CONSENT" | "WAIT" | "APPEAL";
 };
 
 export function platformRestrictionFromControl(control: { platformStatus: string; platformReason: string }): PlatformRestriction | null {
-  if (control.platformStatus !== "SUSPENDED" && control.platformStatus !== "APPEAL") return null;
+  const status = control.platformStatus as PlatformRestriction["status"];
+  if (!["CONSENT_REQUIRED", "VERIFICATION_REQUIRED", "PENDING", "SUSPENDED", "APPEAL", "REJECTED"].includes(status)) return null;
+  const defaults: Record<PlatformRestriction["status"], string> = {
+    CONSENT_REQUIRED: "The Owner must accept current managed-service terms before this deployment can operate.",
+    VERIFICATION_REQUIRED: "This deployment has not received a valid signed operating policy from the platform authority.",
+    PENDING: "This deployment is awaiting platform review and cannot operate yet.",
+    SUSPENDED: "This managed deployment is locked while a platform review is in progress.",
+    APPEAL: "This managed deployment remains locked while its appeal is reviewed.",
+    REJECTED: "This deployment was not approved for managed operation.",
+  };
   return {
-    status: control.platformStatus,
-    reason: control.platformReason || "This managed deployment is locked while a platform review is in progress.",
+    status,
+    reason: control.platformReason || defaults[status],
     appealUrl: OFFICIAL_APPEAL_URL,
+    ownerAction: ["SUSPENDED", "APPEAL", "REJECTED"].includes(status) ? "APPEAL" : status === "PENDING" ? "WAIT" : "CONSENT",
   };
 }
 
@@ -68,6 +80,14 @@ export const appealSchema = z.object({
   message: z.string().trim().min(30).max(2000),
 }).strict();
 
+export const platformConsentSchema = z.object({
+  instanceId: z.string().uuid(),
+  termsAccepted: z.literal(true),
+  privacyAccepted: z.literal(true),
+  termsVersion: z.literal(PLATFORM_TERMS_VERSION),
+  disclosureVersion: z.literal(PLATFORM_DISCLOSURE_VERSION),
+}).strict();
+
 export function platformAuthorityUrl() {
   if (process.env.NODE_ENV === "production") return DEFAULT_PLATFORM_AUTHORITY;
   return normaliseOrigin(process.env.PLATFORM_AUTHORITY_URL || DEFAULT_PLATFORM_AUTHORITY, true) || DEFAULT_PLATFORM_AUTHORITY;
@@ -92,7 +112,7 @@ export function requestOrigin(request: Request) {
 }
 
 export function isPlatformAuthority(request: Request) {
-  if (process.env.PLATFORM_AUTHORITY_MODE === "1") return true;
+  if (process.env.NODE_ENV !== "production" && process.env.PLATFORM_AUTHORITY_MODE === "1") return true;
   return requestOrigin(request) === platformAuthorityUrl();
 }
 
@@ -128,6 +148,17 @@ export type PlatformPolicy = {
   updateUrl: string;
 };
 
+export const platformPolicySchema = z.object({
+  instanceId: z.string().uuid(),
+  status: z.enum(PLATFORM_STATUSES),
+  reason: z.string().max(500),
+  version: z.number().int().positive(),
+  issuedAt: z.string().datetime({ offset: true }),
+  nonce: z.string().uuid(),
+  latestReleaseSha: z.string().max(80),
+  updateUrl: z.string().url().max(1000),
+}).strict();
+
 function policyPayload(policy: PlatformPolicy) {
   return [policy.instanceId, policy.status, policy.reason, policy.version, policy.issuedAt, policy.nonce, policy.latestReleaseSha, policy.updateUrl].join("\n");
 }
@@ -137,9 +168,15 @@ export function signPlatformPolicy(policy: PlatformPolicy, instanceSecret: strin
 }
 
 export function verifyPlatformPolicy(policy: PlatformPolicy, signature: string, instanceSecret: string) {
+  if (!platformPolicySchema.safeParse(policy).success) return false;
   const expected = Buffer.from(signPlatformPolicy(policy, instanceSecret));
   const actual = Buffer.from(signature);
   return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+export function isPlatformPolicyFresh(policy: PlatformPolicy, now = Date.now()) {
+  const issuedAt = Date.parse(policy.issuedAt);
+  return Number.isFinite(issuedAt) && issuedAt <= now + 5 * 60_000 && now - issuedAt <= PLATFORM_POLICY_LEASE_MS;
 }
 
 export function secretsMatch(left: string, right: string) {

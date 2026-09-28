@@ -5,6 +5,7 @@ import {
   claimOwnerRecovery, inspectOwnerRecovery, OwnerRecoveryError,
   ownerRecoveryRequestSchema, readOwnerRecoveryJson,
 } from "@/lib/owner-recovery";
+import { getPlatformRestriction } from "@/lib/platform-restriction";
 
 export const runtime = "nodejs";
 
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
     const user = await claimOwnerRecovery(db, await getMongoClient(), input.data);
     try {
       await setSession(user, db);
-      return created({ redirectTo: "/dashboard" });
+      return created({ redirectTo: await getPlatformRestriction(db) ? "/trust-center" : "/dashboard" });
     } catch {
       // The new account is already committed. Never report a creation failure or
       // consume another grant merely because the browser session could not be set.
