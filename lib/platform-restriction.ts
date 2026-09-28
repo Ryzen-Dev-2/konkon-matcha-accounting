@@ -49,6 +49,9 @@ export async function getEffectiveSystemControl(database?: Db) {
   if (policy && ["SUSPENDED", "APPEAL", "REJECTED"].includes(policy.status)) {
     return { ...control, platformStatus: policy.status, platformReason: policy.reason, platformPolicyVersion: policy.version, platformCheckedAt: new Date(policy.issuedAt) };
   }
+  if (policy?.consentRequired) {
+    return { ...control, platformStatus: "CONSENT_REQUIRED", platformReason: policy.reason || "The platform Owner revoked the previous consent. The deployment Owner must accept the current terms again." };
+  }
   if (String(enrollment.termsVersion || "") !== PLATFORM_TERMS_VERSION || String(enrollment.disclosureVersion || "") !== PLATFORM_DISCLOSURE_VERSION) {
     return { ...control, platformStatus: "CONSENT_REQUIRED", platformReason: "The Owner must accept the current managed-service terms before this deployment can operate." };
   }

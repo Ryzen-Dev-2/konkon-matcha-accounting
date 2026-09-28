@@ -5,10 +5,12 @@ import {
   enrollmentSchema,
   isPlatformPolicyFresh,
   normaliseOrigin,
+  platformActionSchema,
   platformRestrictionFromControl,
   PLATFORM_DISCLOSURE_VERSION,
   PLATFORM_TERMS_VERSION,
   signPlatformPolicy,
+  signLegacyPlatformPolicy,
   verifyPlatformPolicy,
   type PlatformPolicy,
 } from "../lib/platform-trust";
@@ -34,17 +36,26 @@ test("managed enrollment requires explicit current-version consent", () => {
 
 test("platform policies are signed per instance and reject tampering", () => {
   const policy: PlatformPolicy = {
-    instanceId: crypto.randomUUID(), status: "ACTIVE", reason: "Approved", version: 4,
+    instanceId: crypto.randomUUID(), status: "ACTIVE", consentRequired: false, reason: "Approved", version: 4,
     issuedAt: new Date().toISOString(), nonce: crypto.randomUUID(), latestReleaseSha: "abc123", updateUrl: "https://example.com/update",
   };
   const secret = "s".repeat(43);
   const signature = signPlatformPolicy(policy, secret);
+  assert.notEqual(signLegacyPlatformPolicy(policy, secret), signature);
   assert.equal(verifyPlatformPolicy(policy, signature, secret), true);
   assert.equal(verifyPlatformPolicy({ ...policy, status: "SUSPENDED" }, signature, secret), false);
+  assert.equal(verifyPlatformPolicy({ ...policy, consentRequired: true }, signature, secret), false);
   assert.equal(verifyPlatformPolicy(policy, signature, "q".repeat(43)), false);
   assert.equal(isPlatformPolicyFresh(policy), true);
   assert.equal(isPlatformPolicyFresh({ ...policy, issuedAt: new Date(Date.now() - 16 * 60_000).toISOString() }), false);
   assert.equal(isPlatformPolicyFresh({ ...policy, issuedAt: new Date(Date.now() + 6 * 60_000).toISOString() }), false);
+});
+
+test("managed consent revocation requires a reason and an optimistic version", () => {
+  const request = { instanceId: crypto.randomUUID(), action: "REVOKE_CONSENT", reason: "Require a fresh Owner acknowledgement.", version: 7 };
+  assert.equal(platformActionSchema.safeParse(request).success, true);
+  assert.equal(platformActionSchema.safeParse({ ...request, reason: "short" }).success, false);
+  assert.equal(platformActionSchema.safeParse({ ...request, version: 0 }).success, false);
 });
 
 test("risk scoring highlights reports but never returns an enforcement decision", () => {

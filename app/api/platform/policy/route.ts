@@ -1,5 +1,5 @@
 import { decryptMemberToken } from "@/lib/member-cards";
-import { appealSchema, isPlatformAuthority, latestRelease, observedNetworkAddress, platformConsentSchema, secretsMatch, signPlatformPolicy, PLATFORM_DISCLOSURE_VERSION, PLATFORM_TERMS_VERSION, type PlatformPolicy } from "@/lib/platform-trust";
+import { appealSchema, isPlatformAuthority, latestRelease, observedNetworkAddress, platformConsentSchema, secretsMatch, signLegacyPlatformPolicy, signPlatformPolicy, PLATFORM_DISCLOSURE_VERSION, PLATFORM_TERMS_VERSION, type PlatformPolicy } from "@/lib/platform-trust";
 import { fail, ok, publicError } from "@/lib/api";
 import { getDb } from "@/lib/db";
 
@@ -34,10 +34,13 @@ export async function GET(request: Request) {
     const release = latestRelease();
     const consentCurrent = String(authenticated.instance.termsVersion || "") === PLATFORM_TERMS_VERSION
       && String(authenticated.instance.disclosureVersion || "") === PLATFORM_DISCLOSURE_VERSION;
+    const recordedStatus = String(authenticated.instance.status || "PENDING") as PlatformPolicy["status"];
+    const preservesRestriction = ["SUSPENDED", "APPEAL", "REJECTED"].includes(recordedStatus);
     const policy: PlatformPolicy = {
       instanceId,
-      status: consentCurrent ? authenticated.instance.status : "PENDING",
-      reason: consentCurrent ? String(authenticated.instance.statusReason || "") : "The Owner must accept the current mandatory managed-service terms.",
+      status: consentCurrent || preservesRestriction ? recordedStatus : "PENDING",
+      consentRequired: !consentCurrent,
+      reason: consentCurrent || preservesRestriction ? String(authenticated.instance.statusReason || "") : "The platform Owner revoked the previous managed-service consent. The deployment Owner must accept the current terms again.",
       version: Number(authenticated.instance.version || 1),
       issuedAt: now.toISOString(),
       nonce: crypto.randomUUID(),
@@ -48,7 +51,11 @@ export async function GET(request: Request) {
       { _id: instanceId as never },
       { $set: { lastSeenAt: now, lastSeenIp: observedNetworkAddress(request), updatedAt: now } },
     );
-    return ok({ policy, signature: signPlatformPolicy(policy, authenticated.secret) });
+    return ok({
+      policy,
+      signature: signLegacyPlatformPolicy(policy, authenticated.secret),
+      signatureV2: signPlatformPolicy(policy, authenticated.secret),
+    });
   } catch (error) {
     return publicError(error);
   }
@@ -71,7 +78,8 @@ export async function POST(request: Request) {
       await authenticated.db.collection("platformInstances").updateOne(
         { _id: input.data.instanceId as never },
         {
-          $set: { termsVersion: input.data.termsVersion, disclosureVersion: input.data.disclosureVersion, termsAcceptedAt: now, updatedAt: now },
+          $set: { termsVersion: input.data.termsVersion, disclosureVersion: input.data.disclosureVersion, termsAcceptedAt: now, consentRenewedAt: now, updatedAt: now },
+          $unset: { consentRevokedAt: "", consentRevokedBy: "", consentRevokedReason: "" },
           $inc: { version: 1 },
           $push: { history: { $each: [{ action: "CONSENT", reason: `Accepted managed-service terms ${input.data.termsVersion}.`, at: now, actor: "INSTANCE_OWNER" }], $slice: -100 } } as never,
         },

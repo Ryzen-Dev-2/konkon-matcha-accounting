@@ -1,5 +1,5 @@
 import { encryptMemberToken } from "@/lib/member-cards";
-import { assessInstanceRisk, enrollmentSchema, isPlatformAuthority, latestRelease, normaliseOrigin, observedNetworkAddress, platformActionSchema } from "@/lib/platform-trust";
+import { assessInstanceRisk, enrollmentSchema, isPlatformAuthority, latestRelease, normaliseOrigin, observedNetworkAddress, platformActionSchema, PLATFORM_DISCLOSURE_VERSION, PLATFORM_TERMS_VERSION } from "@/lib/platform-trust";
 import { authorize, created, fail, ok, publicError, sameOrigin } from "@/lib/api";
 import { getDb } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
@@ -124,27 +124,48 @@ export async function PATCH(request: Request) {
     const instance = await db.collection("platformInstances").findOne({ _id: input.data.instanceId as never });
     if (!instance) return fail("Managed instance not found.", 404);
     const status = String(instance.status);
+    if (input.data.action === "REVOKE_CONSENT"
+      && (String(instance.termsVersion || "") !== PLATFORM_TERMS_VERSION || String(instance.disclosureVersion || "") !== PLATFORM_DISCLOSURE_VERSION)) {
+      return fail("This deployment already requires renewed Owner consent.", 409);
+    }
     const allowed: Record<string, string[]> = {
       APPROVE: ["PENDING", "REJECTED"],
       SUSPEND: ["ACTIVE", "APPEAL"],
       REOPEN: ["SUSPENDED", "APPEAL"],
       REJECT: ["PENDING"],
+      REVOKE_CONSENT: ["PENDING", "ACTIVE", "SUSPENDED", "APPEAL", "REJECTED"],
     };
     if (!allowed[input.data.action].includes(status)) return fail(`This action is not available while the instance is ${status}.`, 409);
-    const nextStatus = { APPROVE: "ACTIVE", SUSPEND: "SUSPENDED", REOPEN: "ACTIVE", REJECT: "REJECTED" }[input.data.action];
+    const nextStatus = input.data.action === "REVOKE_CONSENT"
+      ? status
+      : { APPROVE: "ACTIVE", SUSPEND: "SUSPENDED", REOPEN: "ACTIVE", REJECT: "REJECTED" }[input.data.action];
     const reason = input.data.reason || (input.data.action === "APPROVE" ? "Managed instance approved." : "Suspension lifted after review.");
     const now = new Date();
+    const fields = {
+      status: nextStatus,
+      statusReason: input.data.action === "REVOKE_CONSENT" ? String(instance.statusReason || "") : reason,
+      updatedAt: now,
+      reviewedAt: now,
+      reviewedBy: auth.session.id,
+      ...(input.data.action === "REVOKE_CONSENT" ? {
+        termsVersion: "REVOKED",
+        disclosureVersion: "REVOKED",
+        consentRevokedAt: now,
+        consentRevokedBy: auth.session.id,
+        consentRevokedReason: reason,
+      } : {}),
+    };
     const update = await db.collection("platformInstances").updateOne(
       { _id: input.data.instanceId as never, version: input.data.version },
       {
-        $set: { status: nextStatus, statusReason: reason, updatedAt: now, reviewedAt: now, reviewedBy: auth.session.id },
+        $set: fields,
         $inc: { version: 1 },
         $push: { history: { $each: [{ action: input.data.action, reason, at: now, actor: auth.session.fullName }], $slice: -100 } } as never,
       },
     );
     if (!update.modifiedCount) return fail("This record changed while you were reviewing it. Refresh and try again.", 409);
     await writeAudit(db, auth.session, `platform.instance_${input.data.action.toLowerCase()}`, "platformInstance", input.data.instanceId, { from: status, to: nextStatus, reason });
-    return ok({ instanceId: input.data.instanceId, status: nextStatus, reason, version: input.data.version + 1 });
+    return ok({ instanceId: input.data.instanceId, status: nextStatus, consentRequired: input.data.action === "REVOKE_CONSENT", reason, version: input.data.version + 1 });
   } catch (error) {
     return publicError(error);
   }

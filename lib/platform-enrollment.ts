@@ -34,9 +34,9 @@ export async function syncManagedPolicy(db: Db, enrollment: Record<string, unkno
     cache: "no-store",
     signal: AbortSignal.timeout(12_000),
   });
-  const payload = await readPlatformEnvelope(response) as { policy?: unknown; signature?: unknown };
+  const payload = await readPlatformEnvelope(response) as { policy?: unknown; signatureV2?: unknown };
   const policy = platformPolicySchema.safeParse(payload?.policy);
-  const signature = typeof payload?.signature === "string" ? payload.signature : "";
+  const signature = typeof payload?.signatureV2 === "string" ? payload.signatureV2 : "";
   if (!policy.success || !signature || policy.data.instanceId !== instanceId || !verifyPlatformPolicy(policy.data, signature, secret)) {
     throw new Error("The platform authority returned an invalid signed policy.");
   }
@@ -46,7 +46,7 @@ export async function syncManagedPolicy(db: Db, enrollment: Record<string, unkno
   await Promise.all([
     db.collection("platformEnrollments").updateOne(
       { _id: "workspace" as never, instanceId },
-      { $set: { authorityUrl, status: policy.data.status, statusReason: policy.data.reason, policyVersion: policy.data.version, verifiedPolicy: policy.data, policySignature: signature, latestReleaseSha: policy.data.latestReleaseSha, updateUrl: policy.data.updateUrl, lastSyncAt: now, updatedAt: now }, $inc: { version: 1 } },
+      { $set: { authorityUrl, status: policy.data.status, statusReason: policy.data.reason, consentRequired: policy.data.consentRequired, policyVersion: policy.data.version, verifiedPolicy: policy.data, policySignature: signature, latestReleaseSha: policy.data.latestReleaseSha, updateUrl: policy.data.updateUrl, lastSyncAt: now, updatedAt: now }, $inc: { version: 1 } },
     ),
     db.collection("systemControls").updateOne(
       { _id: "workspace" as never },

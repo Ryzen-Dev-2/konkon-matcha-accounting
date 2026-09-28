@@ -54,11 +54,11 @@ export const enrollmentSchema = z.object({
 
 export const platformActionSchema = z.object({
   instanceId: z.string().uuid(),
-  action: z.enum(["APPROVE", "SUSPEND", "REOPEN", "REJECT"]),
+  action: z.enum(["APPROVE", "SUSPEND", "REOPEN", "REJECT", "REVOKE_CONSENT"]),
   reason: z.string().trim().max(500).default(""),
   version: z.coerce.number().int().positive(),
 }).superRefine((value, context) => {
-  if (["SUSPEND", "REJECT"].includes(value.action) && value.reason.length < 10) {
+  if (["SUSPEND", "REJECT", "REVOKE_CONSENT"].includes(value.action) && value.reason.length < 10) {
     context.addIssue({ code: "custom", path: ["reason"], message: "Give a clear reason of at least 10 characters." });
   }
 });
@@ -140,6 +140,7 @@ export function newInstanceSecret() {
 export type PlatformPolicy = {
   instanceId: string;
   status: PlatformStatus;
+  consentRequired: boolean;
   reason: string;
   version: number;
   issuedAt: string;
@@ -151,6 +152,7 @@ export type PlatformPolicy = {
 export const platformPolicySchema = z.object({
   instanceId: z.string().uuid(),
   status: z.enum(PLATFORM_STATUSES),
+  consentRequired: z.boolean(),
   reason: z.string().max(500),
   version: z.number().int().positive(),
   issuedAt: z.string().datetime({ offset: true }),
@@ -160,11 +162,19 @@ export const platformPolicySchema = z.object({
 }).strict();
 
 function policyPayload(policy: PlatformPolicy) {
+  return [policy.instanceId, policy.status, policy.consentRequired ? "1" : "0", policy.reason, policy.version, policy.issuedAt, policy.nonce, policy.latestReleaseSha, policy.updateUrl].join("\n");
+}
+
+function legacyPolicyPayload(policy: PlatformPolicy) {
   return [policy.instanceId, policy.status, policy.reason, policy.version, policy.issuedAt, policy.nonce, policy.latestReleaseSha, policy.updateUrl].join("\n");
 }
 
 export function signPlatformPolicy(policy: PlatformPolicy, instanceSecret: string) {
   return createHmac("sha256", instanceSecret).update(policyPayload(policy)).digest("base64url");
+}
+
+export function signLegacyPlatformPolicy(policy: PlatformPolicy, instanceSecret: string) {
+  return createHmac("sha256", instanceSecret).update(legacyPolicyPayload(policy)).digest("base64url");
 }
 
 export function verifyPlatformPolicy(policy: PlatformPolicy, signature: string, instanceSecret: string) {
