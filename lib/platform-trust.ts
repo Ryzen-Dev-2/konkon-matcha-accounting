@@ -63,6 +63,13 @@ export const platformActionSchema = z.object({
   }
 });
 
+export const platformServiceDeleteSchema = z.object({
+  instanceId: z.string().uuid(),
+  reason: z.string().trim().min(10).max(500),
+  confirmation: z.string().trim().min(4).max(240),
+  version: z.coerce.number().int().positive(),
+}).strict();
+
 export const publicReportSchema = z.object({
   instanceId: z.string().uuid().optional(),
   domain: z.string().trim().min(4).max(240),
@@ -135,6 +142,12 @@ export function reporterFingerprint(request: Request) {
 
 export function newInstanceSecret() {
   return randomBytes(32).toString("base64url");
+}
+
+export function platformInstanceSecretFingerprint(instanceId: string, instanceSecret: string) {
+  return createHmac("sha256", instanceSecret)
+    .update(`konkon-deleted-instance:${instanceId}:v1`)
+    .digest("hex");
 }
 
 export type PlatformPolicy = {

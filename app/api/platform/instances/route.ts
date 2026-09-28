@@ -1,7 +1,7 @@
-import { encryptMemberToken } from "@/lib/member-cards";
-import { assessInstanceRisk, enrollmentSchema, isPlatformAuthority, latestRelease, normaliseOrigin, observedNetworkAddress, platformActionSchema, PLATFORM_DISCLOSURE_VERSION, PLATFORM_TERMS_VERSION } from "@/lib/platform-trust";
+import { decryptMemberToken, encryptMemberToken } from "@/lib/member-cards";
+import { assessInstanceRisk, enrollmentSchema, isPlatformAuthority, latestRelease, normaliseOrigin, observedNetworkAddress, platformActionSchema, platformInstanceSecretFingerprint, platformServiceDeleteSchema, secretsMatch, PLATFORM_DISCLOSURE_VERSION, PLATFORM_TERMS_VERSION } from "@/lib/platform-trust";
 import { authorize, created, fail, ok, publicError, sameOrigin } from "@/lib/api";
-import { getDb } from "@/lib/db";
+import { getDb, getMongoClient } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { serialise } from "@/lib/format";
 
@@ -81,7 +81,20 @@ export async function POST(request: Request) {
     const existingByDomain = await db.collection("platformInstances").findOne({ domain, _id: { $ne: input.data.instanceId } } as never);
     if (existingByDomain) return fail("This deployment domain already belongs to another managed-instance application.", 409);
     const existing = await db.collection("platformInstances").findOne({ _id: input.data.instanceId as never });
-    if (existing) return fail("This managed-instance identifier already exists.", 409);
+    if (existing) {
+      const storedSecret = existing.encryptedSecret
+        ? decryptMemberToken(String(existing.encryptedSecret), secretContext(input.data.instanceId))
+        : "";
+      if (String(existing.domain || "") === domain && storedSecret && secretsMatch(storedSecret, input.data.instanceSecret)) {
+        return created({ instanceId: input.data.instanceId, status: existing.status, version: existing.version });
+      }
+      return fail("This managed-instance identifier already exists.", 409);
+    }
+    const deleted = await db.collection("platformDeletedInstances").findOne({ _id: input.data.instanceId as never });
+    if (deleted && (String(deleted.domain || "") !== domain
+      || String(deleted.secretFingerprint || "") !== platformInstanceSecretFingerprint(input.data.instanceId, input.data.instanceSecret))) {
+      return fail("This deleted managed service can be resubmitted only by its original deployment.", 409);
+    }
     const instance = {
       _id: input.data.instanceId,
       domain,
@@ -166,6 +179,69 @@ export async function PATCH(request: Request) {
     if (!update.modifiedCount) return fail("This record changed while you were reviewing it. Refresh and try again.", 409);
     await writeAudit(db, auth.session, `platform.instance_${input.data.action.toLowerCase()}`, "platformInstance", input.data.instanceId, { from: status, to: nextStatus, reason });
     return ok({ instanceId: input.data.instanceId, status: nextStatus, consentRequired: input.data.action === "REVOKE_CONSENT", reason, version: input.data.version + 1 });
+  } catch (error) {
+    return publicError(error);
+  }
+}
+
+export async function DELETE(request: Request) {
+  if (!isPlatformAuthority(request)) return fail("This deployment is not the platform authority.", 404);
+  const auth = await authorize("owner.control", { allowReadOnlyWrite: true });
+  if (auth.error) return auth.error;
+  if (!sameOrigin(request)) return fail("This request was blocked.", 403);
+  try {
+    let body: unknown;
+    try { body = await request.json(); } catch { return fail("The request body must be valid JSON.", 400); }
+    const input = platformServiceDeleteSchema.safeParse(body);
+    if (!input.success) return fail("Check the managed-service deletion details.", 422, input.error.flatten().fieldErrors);
+    const db = await getDb();
+    const instance = await db.collection("platformInstances").findOne({ _id: input.data.instanceId as never });
+    if (!instance) return fail("Managed instance not found.", 404);
+    if (input.data.confirmation.toLowerCase() !== String(instance.domain || "").toLowerCase()) {
+      return fail("Type the deployment domain exactly to confirm deletion.", 422, { confirmation: ["The domain does not match this managed service."] });
+    }
+    const now = new Date();
+    const instanceSecret = instance.encryptedSecret
+      ? decryptMemberToken(String(instance.encryptedSecret), secretContext(input.data.instanceId))
+      : "";
+    if (!instanceSecret) return fail("This managed service cannot be safely deleted because its credential is unavailable.", 409);
+    const client = await getMongoClient();
+    const session = client.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await db.collection("platformDeletedInstances").replaceOne(
+          { _id: input.data.instanceId as never },
+          {
+            _id: input.data.instanceId,
+            domain: String(instance.domain || ""),
+            businessLabel: String(instance.businessLabel || ""),
+            priorStatus: String(instance.status || "PENDING"),
+            priorVersion: Number(instance.version || 1),
+            secretFingerprint: platformInstanceSecretFingerprint(input.data.instanceId, instanceSecret),
+            deletedReason: input.data.reason,
+            deletedAt: now,
+            deletedBy: auth.session.id,
+          } as never,
+          { upsert: true, session },
+        );
+        const removed = await db.collection("platformInstances").deleteOne(
+          { _id: input.data.instanceId as never, version: input.data.version },
+          { session },
+        );
+        if (!removed.deletedCount) throw new Error("MANAGED_INSTANCE_VERSION_CONFLICT");
+        await writeAudit(db, auth.session, "platform.instance_deleted", "platformInstance", input.data.instanceId, {
+          domain: String(instance.domain || ""), priorStatus: String(instance.status || ""), reason: input.data.reason,
+        }, session);
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "MANAGED_INSTANCE_VERSION_CONFLICT") {
+        return fail("This record changed while you were deleting it. Refresh and try again.", 409);
+      }
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+    return ok({ deleted: true, instanceId: input.data.instanceId, message: "The managed service was removed. Its deployment is locked and must submit fresh Owner consent before it can return." });
   } catch (error) {
     return publicError(error);
   }

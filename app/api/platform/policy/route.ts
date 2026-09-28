@@ -28,8 +28,14 @@ export async function GET(request: Request) {
   if (!isPlatformAuthority(request)) return fail("This deployment is not the platform authority.", 404);
   try {
     const instanceId = new URL(request.url).searchParams.get("instanceId") || "";
+    const db = await getDb();
     const authenticated = await authenticatedInstance(request, instanceId);
-    if (!authenticated) return fail("Managed-instance credentials were rejected.", 401);
+    if (!authenticated) {
+      if (await db.collection("platformDeletedInstances").findOne({ _id: instanceId as never }, { projection: { _id: 1 } })) {
+        return fail("This managed service was deleted by the platform Owner. Fresh Owner consent and a new review application are required.", 410);
+      }
+      return fail("Managed-instance credentials were rejected.", 401);
+    }
     const now = new Date();
     const release = latestRelease();
     const consentCurrent = String(authenticated.instance.termsVersion || "") === PLATFORM_TERMS_VERSION

@@ -34,6 +34,27 @@ export async function syncManagedPolicy(db: Db, enrollment: Record<string, unkno
     cache: "no-store",
     signal: AbortSignal.timeout(12_000),
   });
+  if (response.status === 410) {
+    const body = await response.json().catch(() => null) as { error?: string } | null;
+    const reason = body?.error || "This managed service was deleted by the platform Owner. Fresh Owner consent is required.";
+    const now = new Date();
+    await Promise.all([
+      db.collection("platformEnrollments").updateOne(
+        { _id: "workspace" as never, instanceId },
+        {
+          $set: { status: "PENDING", statusReason: reason, consentRequired: true, serviceDeletedAt: now, termsVersion: "DELETED", disclosureVersion: "DELETED", updatedAt: now },
+          $unset: { verifiedPolicy: "", policySignature: "", lastSyncAt: "" },
+          $inc: { version: 1 },
+        },
+      ),
+      db.collection("systemControls").updateOne(
+        { _id: "workspace" as never },
+        { $set: { platformStatus: "CONSENT_REQUIRED", platformReason: reason, platformCheckedAt: now, updatedAt: now }, $setOnInsert: { mode: "OPEN", reason: "", reopenAt: null, scannerGeneration: 1, createdAt: now } },
+        { upsert: true },
+      ),
+    ]);
+    throw new Error(reason);
+  }
   const payload = await readPlatformEnvelope(response) as { policy?: unknown; signatureV2?: unknown };
   const policy = platformPolicySchema.safeParse(payload?.policy);
   const signature = typeof payload?.signatureV2 === "string" ? payload.signatureV2 : "";

@@ -35,7 +35,7 @@ async function currentRequestIsAuthority() {
 export async function getEffectiveSystemControl(database?: Db) {
   const db = database || await getDb();
   let enrollment = await db.collection("platformEnrollments").findOne({ _id: "workspace" as never });
-  if (enrollment && (Date.now() >= nextRefreshCheckAt || !verifiedEnrollmentPolicy(enrollment))) {
+  if (enrollment && !enrollment.serviceDeletedAt && (Date.now() >= nextRefreshCheckAt || !verifiedEnrollmentPolicy(enrollment))) {
     refreshInFlight ||= refreshPolicyIfDue(db, enrollment).finally(() => { refreshInFlight = null; });
     await refreshInFlight;
     nextRefreshCheckAt = Date.now() + CACHE_MS;

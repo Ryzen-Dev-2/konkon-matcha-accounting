@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, FileWarning, LoaderCircle, LockKeyhole, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, FileWarning, LoaderCircle, LockKeyhole, ShieldAlert, SlidersHorizontal } from "lucide-react";
 import { apiRequest } from "@/components/ui";
 import { OFFICIAL_PLATFORM_ORIGIN, OFFICIAL_TERMS_URL } from "@/lib/platform-public";
 import styles from "./platform-report-form.module.css";
@@ -32,7 +32,7 @@ export function PlatformReportForm({ initialDomain }: { initialDomain: string })
   }
 
   return <main className={styles.page}>
-    <nav><a href={OFFICIAL_PLATFORM_ORIGIN}><ArrowLeft size={16} />Platform home</a><span>TRUST DESK / BUYER REPORT</span></nav>
+    <nav><a href={OFFICIAL_PLATFORM_ORIGIN}><ArrowLeft size={16} />Platform home</a><span>TRUST DESK / BUYER REPORT</span><a href="/trust-center"><SlidersHorizontal size={16} />Owner control room</a></nav>
     <div className={styles.layout}>
       <aside>
         <span className={styles.kicker}>INDEPENDENT REVIEW</span>

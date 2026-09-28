@@ -6,6 +6,8 @@ import {
   isPlatformPolicyFresh,
   normaliseOrigin,
   platformActionSchema,
+  platformInstanceSecretFingerprint,
+  platformServiceDeleteSchema,
   platformRestrictionFromControl,
   PLATFORM_DISCLOSURE_VERSION,
   PLATFORM_TERMS_VERSION,
@@ -56,6 +58,22 @@ test("managed consent revocation requires a reason and an optimistic version", (
   assert.equal(platformActionSchema.safeParse(request).success, true);
   assert.equal(platformActionSchema.safeParse({ ...request, reason: "short" }).success, false);
   assert.equal(platformActionSchema.safeParse({ ...request, version: 0 }).success, false);
+});
+
+test("managed-service deletion requires its exact domain, reason and optimistic version", () => {
+  const request = { instanceId: crypto.randomUUID(), reason: "Owner requested a fresh managed-service application.", confirmation: "https://store.example.com", version: 4 };
+  assert.equal(platformServiceDeleteSchema.safeParse(request).success, true);
+  assert.equal(platformServiceDeleteSchema.safeParse({ ...request, reason: "short" }).success, false);
+  assert.equal(platformServiceDeleteSchema.safeParse({ ...request, confirmation: "" }).success, false);
+});
+
+test("deleted managed-service fingerprints bind the original instance and secret", () => {
+  const instanceId = crypto.randomUUID();
+  const secret = "s".repeat(43);
+  const fingerprint = platformInstanceSecretFingerprint(instanceId, secret);
+  assert.equal(fingerprint, platformInstanceSecretFingerprint(instanceId, secret));
+  assert.notEqual(fingerprint, platformInstanceSecretFingerprint(instanceId, "q".repeat(43)));
+  assert.notEqual(fingerprint, platformInstanceSecretFingerprint(crypto.randomUUID(), secret));
 });
 
 test("risk scoring highlights reports but never returns an enforcement decision", () => {

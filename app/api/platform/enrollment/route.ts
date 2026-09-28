@@ -37,12 +37,13 @@ export async function GET(request: Request) {
     if (isPlatformAuthority(request)) return ok({ authority: true, release: latestRelease() });
     let enrollment = await db.collection("platformEnrollments").findOne({ _id: "workspace" as never }, { projection: safeEnrollmentProjection });
     let syncError = "";
-    if (enrollment) {
+    if (enrollment && !enrollment.serviceDeletedAt) {
       try {
         await syncManagedPolicy(db, { ...enrollment, encryptedSecret: (await db.collection("platformEnrollments").findOne({ _id: "workspace" as never }, { projection: { encryptedSecret: 1 } }))?.encryptedSecret });
         enrollment = await db.collection("platformEnrollments").findOne({ _id: "workspace" as never }, { projection: safeEnrollmentProjection });
       } catch (error) {
         syncError = error instanceof Error ? error.message : "Could not refresh the signed platform policy.";
+        enrollment = await db.collection("platformEnrollments").findOne({ _id: "workspace" as never }, { projection: safeEnrollmentProjection });
       }
     }
     return ok(serialise({
@@ -138,6 +139,52 @@ export async function POST(request: Request) {
     const instanceId = String(existing.instanceId);
     const secret = decryptMemberToken(String(existing.encryptedSecret), localPlatformSecretContext(instanceId));
     if (input.data.action === "CONSENT") {
+      if (existing.serviceDeletedAt) {
+        const domain = requestOrigin(request);
+        if (!domain || (!domain.startsWith("https://") && process.env.NODE_ENV === "production")) return fail("Managed enrollment requires a public HTTPS deployment domain.", 422);
+        const settings = normaliseBusinessSettings(await db.collection("settings").findOne({ key: "business" }));
+        const release = latestRelease();
+        const provider = process.env.VERCEL ? "VERCEL" : "OTHER";
+        const authorityUrl = platformAuthorityUrl();
+        const response = await fetch(`${authorityUrl}/api/platform/instances`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            instanceId,
+            domain,
+            businessLabel: settings.businessName,
+            provider,
+            releaseSha: release.sha,
+            appVersion: release.appVersion,
+            termsAccepted: true,
+            privacyAccepted: true,
+            termsVersion: PLATFORM_TERMS_VERSION,
+            disclosureVersion: PLATFORM_DISCLOSURE_VERSION,
+            instanceSecret: secret,
+          }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        const authority = await readPlatformEnvelope(response) as { status?: string; version?: number };
+        const now = new Date();
+        await db.collection("platformEnrollments").updateOne(
+          { _id: "workspace" as never, instanceId },
+          {
+            $set: {
+              authorityUrl, domain, provider, releaseSha: release.sha, appVersion: release.appVersion,
+              termsVersion: PLATFORM_TERMS_VERSION, disclosureVersion: PLATFORM_DISCLOSURE_VERSION,
+              termsAcceptedAt: now, termsAcceptedBy: auth.session.id, consentRequired: false,
+              status: authority.status || "PENDING", statusReason: "Awaiting renewed platform Owner review.",
+              policyVersion: authority.version || 1, updatedAt: now,
+            },
+            $unset: { serviceDeletedAt: "", verifiedPolicy: "", policySignature: "", lastSyncAt: "" },
+            $inc: { version: 1 },
+          },
+        );
+        await writeAudit(db, auth.session, "platform.enrollment_resubmitted", "workspace", "default", { instanceId, domain, authorityUrl, termsVersion: PLATFORM_TERMS_VERSION, disclosureVersion: PLATFORM_DISCLOSURE_VERSION });
+        const refreshed = await db.collection("platformEnrollments").findOne({ _id: "workspace" as never });
+        const policy = refreshed ? await syncManagedPolicy(db, refreshed) : null;
+        return ok({ status: policy?.status || "PENDING", message: "Fresh Owner consent was submitted. This deployment remains locked until the platform Owner approves the renewed application." });
+      }
       const response = await fetch(`${platformAuthorityUrl()}/api/platform/policy`, {
         method: "POST",
         headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json", Accept: "application/json" },
